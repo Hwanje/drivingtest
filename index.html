@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>운전면허 장내기능시험 연습</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ===================== 주행 화면 ===================== -->
+  <main id="viewport">
+    <canvas id="scene"></canvas>
+    <canvas id="overlay"></canvas>
+
+    <!-- 상단 상태바 -->
+    <div id="topbar">
+      <div class="chip"><span class="label">점수</span><span id="score" class="value pass">100</span></div>
+      <div class="chip"><span class="label">남은 시간</span><span id="time" class="value">10:00</span></div>
+      <div class="chip"><span class="label">시점</span><span id="view-mode" class="value small">운전석 시점</span></div>
+    </div>
+
+    <!-- 시험관 안내 -->
+    <div id="instruction-box">
+      <div class="examiner">시험관</div>
+      <div>
+        <p id="instruction">차량에 탑승했습니다. 안전벨트를 착용하십시오.</p>
+        <p id="detail"></p>
+      </div>
+    </div>
+
+    <!-- 계기판 -->
+    <div id="dashwrap">
+      <canvas id="dash"></canvas>
+      <div id="telltales">
+        <span class="tt" id="tt-left">◄</span>
+        <span class="tt" id="tt-seatbelt">벨트</span>
+        <span class="tt" id="tt-brake">주차</span>
+        <span class="tt" id="tt-engine">엔진</span>
+        <span class="tt" id="tt-hazard">비상</span>
+        <span class="tt" id="tt-head">전조등</span>
+        <span class="tt" id="tt-wiper">와이퍼</span>
+        <span class="tt" id="tt-right">►</span>
+      </div>
+    </div>
+
+    <!-- 미니맵 -->
+    <div id="minimapwrap">
+      <canvas id="minimap"></canvas>
+      <div class="cap">코스 전경</div>
+    </div>
+
+    <!-- ============ 구석의 3D 부품 박스 ============ -->
+    <section id="partbox" class="off">
+      <header>
+        <div>
+          <h3 data-role="title">방향지시등 레버</h3>
+          <p data-role="subtitle"></p>
+        </div>
+        <span class="part-status tone-off" data-role="status"></span>
+      </header>
+      <div class="part-canvas"><canvas></canvas></div>
+      <p class="reason" data-role="reason"></p>
+      <p class="hint">Tab: 다른 부품 보기 · Esc: 자동으로 되돌리기</p>
+    </section>
+
+    <div id="toasts"></div>
+
+    <div id="paused" class="hidden overlay-msg"><div>일시정지 (P)</div></div>
+
+    <!-- 결과 -->
+    <div id="result" class="hidden">
+      <div class="card">
+        <h2 id="result-title" class="pass">합격</h2>
+        <p id="result-score"></p>
+        <p id="result-reason" class="reason"></p>
+        <p id="result-time" class="time"></p>
+        <h4>감점 내역</h4>
+        <ul id="result-list"></ul>
+        <button id="result-restart" class="primary">다시 응시하기 (R)</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===================== 사이드 패널 ===================== -->
+  <aside id="side">
+    <h1>운전면허 장내기능시험 <span>연습 프로그램</span></h1>
+
+    <section class="panel">
+      <h2>코스 진행</h2>
+      <ol id="stages"></ol>
+    </section>
+
+    <section class="panel">
+      <h2>감점 내역</h2>
+      <ul id="deducts"></ul>
+    </section>
+
+    <section class="panel">
+      <h2>조작</h2>
+      <div class="btn-grid">
+        <button data-hold="up" class="drive">가속 ↑</button>
+        <button data-hold="down" class="drive">제동 ↓</button>
+        <button data-hold="left" class="drive">좌 ←</button>
+        <button data-hold="right" class="drive">우 →</button>
+      </div>
+      <div class="btn-grid four">
+        <button data-key="1">P</button>
+        <button data-key="2">R</button>
+        <button data-key="3">N</button>
+        <button data-key="4">D</button>
+      </div>
+      <div class="btn-grid">
+        <button data-key="q">◄ 좌 깜빡이 (Q)</button>
+        <button data-key="e">우 깜빡이 ► (E)</button>
+        <button data-key="z">와이퍼 (Z)</button>
+        <button data-key="x">전조등 (X)</button>
+        <button data-key="h">비상등 (H)</button>
+        <button data-key="b">안전벨트 (B)</button>
+        <button data-key="space">주차 브레이크 (Space)</button>
+        <button data-key="enter">시동 (Enter)</button>
+        <button data-key="c">시점 전환 (C)</button>
+        <button data-key="tab">부품 살펴보기 (Tab)</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>설정</h2>
+      <div class="btn-grid">
+        <button id="btn-rain">☔ 빗방울 OFF</button>
+        <button id="btn-sound" class="active">🔊 소리 ON</button>
+        <button id="btn-voice" class="active">🗣 음성 안내 ON</button>
+        <button id="btn-help">⌨ 조작 도움말</button>
+        <button id="btn-restart" class="warn">↺ 처음부터 (R)</button>
+      </div>
+    </section>
+
+    <p class="disclaimer">
+      실제 시험 규정과 채점 기준은 도로교통공단 공식 안내를 따릅니다.
+      본 프로그램은 공개된 기준을 바탕으로 재구성한 <b>연습용</b>입니다.
+    </p>
+  </aside>
+</div>
+
+<!-- 도움말 -->
+<div id="help" class="hidden">
+  <div class="card">
+    <h2>조작 방법</h2>
+    <table>
+      <tr><th>↑ / W</th><td>가속 페달</td><th>↓ / S</th><td>브레이크</td></tr>
+      <tr><th>← → / A D</th><td>조향</td><th>1 2 3 4</th><td>P · R · N · D 변속</td></tr>
+      <tr><th>Enter</th><td>시동 / 시동 끄기</td><th>Space</th><td>주차 브레이크</td></tr>
+      <tr><th>B</th><td>안전벨트</td><th>Q / E</th><td>좌 / 우 방향지시등</td></tr>
+      <tr><th>Z</th><td>와이퍼 (OFF→INT→LO→HI)</td><th>X</th><td>전조등 (OFF→미등→전조등)</td></tr>
+      <tr><th>H</th><td>비상점멸등</td><th>C</th><td>시점 전환</td></tr>
+      <tr><th>Tab</th><td>3D 부품 살펴보기</td><th>Esc</th><td>부품 자동 표시로 복귀</td></tr>
+      <tr><th>P</th><td>일시정지</td><th>R</th><td>처음부터 다시</td></tr>
+    </table>
+    <h3>시험 순서</h3>
+    <p>안전벨트 → 시동 → <b>운전장치 조작 평가</b>(시험관이 지시하는 전조등·와이퍼·방향지시등 조작)
+      → 출발 → 직각주차 → 신호교차로 → 경사로 → 가속구간 → 돌발상황 → 철길건널목 → 종료</p>
+    <p>100점에서 시작해 감점되며 <b>80점 이상</b>이면 합격입니다.
+      검지선 접촉·코스 이탈, 신호 위반, 안전벨트 미착용 주행 등은 즉시 실격입니다.</p>
+    <button id="help-close" class="primary">닫기</button>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
