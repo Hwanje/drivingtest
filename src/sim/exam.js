@@ -4,6 +4,11 @@
 //   운전장치 조작 → 출발 → 직각주차 → 신호교차로 → 경사로
 //   → 가속구간 → 돌발상황 → 철길건널목 → 종료
 //
+// 단계 전환은 "본선 경로를 얼마나 진행했는가(progress, m)"로만 판단한다.
+// 좌표 한 개로 판단하면 단계가 늦게 시작될 때 완료 조건이 이미 참이라 통째로
+// 건너뛰거나, 조건을 만족시킬 기회를 놓쳐 영영 끝나지 않는 문제가 생긴다.
+// 진행도는 줄어들지 않으므로 순서가 뒤바뀌거나 되돌아가는 일이 없다.
+//
 // 합격기준과 실격기준은 도로교통법 시행규칙 [별표 24] "기능시험 채점기준·합격기준"
 // 의 제1종 보통면허 기준을 따랐다.
 //   합격: 100점 만점에 80점 이상
@@ -18,13 +23,13 @@
 // ※ 개별 감점 항목의 배점은 공개된 자료를 바탕으로 재구성한 근사치이다.
 
 import {
-  insideCourse, nearCourseEdge, crossedCenterLine,
-  PARKING_BAY, RAMP, CL, HALF, EDGE,
+  insideCourse, nearCourseEdge, crossedCenterLine, routeProgress,
+  PARKING_BAY, RAMP, POINT, CL, HALF, EDGE,
 } from './course.js';
 import { SPEC } from './vehicle.js';
 
 export const PASS_SCORE = 80;
-export const TIME_LIMIT = 900;      // 전체 제한시간(초) · 코스 연장 300m 이상
+export const TIME_LIMIT = 900;      // 전체 제한시간(초)
 
 // 차체 기준 위치
 const NOSE = SPEC.wheelbase / 2 + SPEC.frontOverhang;   // 앞범퍼
@@ -61,16 +66,31 @@ export const FAILS = {
   lowScore:     '합격 기준(80점) 미달',
 };
 
-const STAGE_DEFS = [
-  { id: 'controls', name: '운전장치 조작' },
-  { id: 'start',    name: '출발' },
-  { id: 'parking',  name: '직각주차' },
-  { id: 'signal',   name: '신호교차로' },
-  { id: 'ramp',     name: '경사로' },
-  { id: 'accel',    name: '가속구간' },
-  { id: 'sudden',   name: '돌발상황' },
-  { id: 'railroad', name: '철길건널목' },
-  { id: 'finish',   name: '종료' },
+// 주행 단계. until 은 "이 진행거리(m)를 넘으면 단계가 끝난다".
+// 본선 전체 길이는 288m 이다.
+const STAGES = [
+  { id: 'start',    name: '출발',       until: 10 },
+  { id: 'parking',  name: '직각주차',   until: 64 },
+  { id: 'signal',   name: '신호교차로', until: 90 },
+  { id: 'ramp',     name: '경사로',     until: 145 },
+  { id: 'accel',    name: '가속구간',   until: 192 },
+  { id: 'sudden',   name: '돌발상황',   until: 208 },
+  { id: 'railroad', name: '철길건널목', until: 242 },
+  { id: 'finish',   name: '종료',       until: Infinity },
+];
+
+const STAGE_DEFS = [{ id: 'controls', name: '운전장치 조작' }, ...STAGES];
+
+// 방향지시등을 켜야 하는 지점(진행거리 기준).
+// at 을 지나는 순간의 상태를 본다. from 부터 안내가 뜬다.
+const SIGNAL_POINTS = [
+  { id: 'start',   side: 'left',  from: 0,   at: 6,   why: '출발' },
+  { id: 'parkIn',  side: 'right', from: 24,  at: 33,  why: '직각주차 진입' },
+  { id: 'corner1', side: 'right', from: 82,  at: 92,  why: '우회전' },
+  { id: 'corner2', side: 'right', from: 127, at: 137, why: '우회전' },
+  { id: 'corner3', side: 'right', from: 196, at: 206, why: '우회전' },
+  { id: 'corner4', side: 'left',  from: 244, at: 254, why: '좌회전' },
+  { id: 'finish',  side: 'right', from: 270, at: 281, why: '종료 지점 정차' },
 ];
 
 // 운전장치 조작 지시
@@ -86,16 +106,16 @@ const CONTROL_TASKS = [
 ];
 
 export class Exam {
-  // course: buildCourse() 결과 (정지선 좌표 등을 그대로 쓴다)
-  constructor(vehicle, course) {
+  constructor(vehicle) {
     this.v = vehicle;
-    this.course = course;
     this.reset();
   }
 
   reset() {
     this.phase = 'boarding';       // boarding → controls → driving → done
+    this.stageIndex = -1;          // STAGES 의 인덱스
     this.stage = 'controls';
+    this.progress = 0;             // 본선 진행거리(m)
     this.score = 100;
     this.deductions = [];
     this.counts = {};
@@ -115,24 +135,24 @@ export class Exam {
 
     this.signalPhase = 'red';
     this.signalTimer = 8;
+    this.signalDone = new Set();   // 이미 판정한 방향지시등 지점
 
     this.startTimer = 0;
     this.movedFromStart = false;
     this.crossIdleTimer = 0;
-    this.suddenActive = false;
-    this.suddenTimer = 0;
-    this.suddenHandled = false;
+    this.parkTimer = 0;
+    this.parked = false;
+    this.parkStillTimer = 0;
     this.rampStopped = false;
     this.rampWaitTimer = 0;
     this.rampCleared = false;
-    this.parkTimer = 0;
-    this.parkPhase = 'approach';   // approach → exit
-    this.parkStillTimer = 0;
-    this.railStopped = false;
+    this.suddenActive = false;
+    this.suddenTimer = 0;
+    this.suddenHandled = false;
     this.accelBest = 0;
-    this.accelActive = false;
+    this.railStopped = false;
     this.finishStill = 0;
-    this.finishChecked = false;
+    this.finishDone = false;
     this.nearLine = false;
     this.lineWarnTimer = 0;
 
@@ -140,8 +160,6 @@ export class Exam {
     this._prevGear = 'P';
     this._boardingStep = 0;
     this._crossedStopLine = false;
-    this._parkSignalChecked = false;
-    this._finishSignalChecked = false;
   }
 
   // ---------------------------------------------------------------- 유틸
@@ -151,9 +169,7 @@ export class Exam {
     this.instruction = text;
   }
 
-  note(text, tone = 'info') {
-    this.events.push({ text, tone });
-  }
+  note(text, tone = 'info') { this.events.push({ text, tone }); }
 
   showPart(id, reason, priority = 3, hold = 4) {
     this.partRequest = { id, reason, priority, hold };
@@ -198,12 +214,6 @@ export class Exam {
       ...s,
       state: this.completed.has(s.id) ? 'done' : (s.id === this.stage ? 'active' : 'todo'),
     }));
-  }
-
-  completeStage(id, next) {
-    if (this.completed.has(id)) return;
-    this.completed.add(id);
-    this.stage = next;
   }
 
   // ---------------------------------------------------------------- 갱신
@@ -270,20 +280,17 @@ export class Exam {
     if (!v.seatbelt && Math.abs(v.speed) > 0.5) { this.fail('noSeatbelt'); return; }
 
     // (3) 교차로 내 30초 이상 정차
-    const inCross = v.x > CL.legB - HALF && v.x < CL.legB + HALF &&
-      v.z > CL.legA - HALF && v.z < CL.legA + HALF;
+    const inCross = Math.abs(v.x - POINT.crossX) < HALF && Math.abs(v.z - CL.legA) < HALF;
     if (inCross && Math.abs(v.speed) < 0.2) {
       this.crossIdleTimer += dt;
       if (this.crossIdleTimer > 30) { this.fail('crossIdle'); return; }
-      if (this.crossIdleTimer > 15) {
-        this.detail = `교차로 내 정차 ${this.crossIdleTimer.toFixed(0)}초 · 30초를 넘기면 실격입니다`;
-      }
     } else if (!inCross) {
       this.crossIdleTimer = 0;
     }
 
-    // 중앙선 침범 (직각주차 구역에서는 보지 않는다)
-    if (this.stage !== 'parking' && crossedCenterLine(v.x, v.z)) this.deduct('centerLine');
+    // 중앙선 침범. 출발 직선은 왕복이라 진행 방향을 알려 준다.
+    const dir = this.progress > 262 ? 'west' : 'east';
+    if (this.stage !== 'parking' && crossedCenterLine(v.x, v.z, dir)) this.deduct('centerLine');
 
     if (v.speedKmh > 32) this.deduct('overSpeed', `${Math.round(v.speedKmh)}km/h`);
     if (v.lateralJerk > 5.2) this.deduct('vibration');
@@ -338,7 +345,8 @@ export class Exam {
     const task = this.controlQueue[this.controlIndex];
     if (!task) {
       this.phase = 'driving';
-      this.stage = 'start';
+      this.stageIndex = 0;
+      this.stage = STAGES[0].id;
       this.completed.add('controls');
       this.startTimer = 0;
       this.say('출발하십시오. 좌측 방향지시등을 켜고 주차 브레이크를 해제한 뒤 출발합니다.');
@@ -348,8 +356,17 @@ export class Exam {
   }
 
   // ---- 주행 ---------------------------------------------------------------
+
   updateDriving(dt, ui) {
-    switch (this.stage) {
+    const v = this.v;
+    this.progress = routeProgress(v.x, v.z, this.progress);
+
+    this.checkSignalPoints(ui);
+
+    const stage = STAGES[this.stageIndex];
+    if (!stage) return;
+
+    switch (stage.id) {
       case 'start': this.stStart(dt, ui); break;
       case 'parking': this.stParking(dt, ui); break;
       case 'signal': this.stSignal(dt, ui); break;
@@ -358,6 +375,90 @@ export class Exam {
       case 'sudden': this.stSudden(dt, ui); break;
       case 'railroad': this.stRailroad(dt, ui); break;
       case 'finish': this.stFinish(dt, ui); break;
+    }
+    if (this.failed || this.phase === 'done') return;
+
+    // 진행거리가 이 단계의 끝을 넘으면 마무리하고 다음 단계로 넘어간다.
+    // 단계는 반드시 순서대로 하나씩만 진행된다.
+    if (this.progress >= stage.until) this.advanceStage(ui);
+  }
+
+  advanceStage(ui) {
+    const stage = STAGES[this.stageIndex];
+    // 이 단계에서 하지 못한 것을 마지막으로 정산한다
+    switch (stage.id) {
+      case 'parking':
+        if (!this.parked) { this.fail('courseSkip'); return; }
+        break;
+      case 'ramp':
+        if (!this.rampStopped) this.deduct('rampNoStop');
+        break;
+      case 'accel':
+        if (this.accelBest < 20) this.deduct('accelSlow', `최고 ${this.accelBest.toFixed(0)}km/h`);
+        else this.note(`가속구간 통과 · 최고 ${this.accelBest.toFixed(0)}km/h`, 'ok');
+        break;
+      case 'sudden':
+        if (!this.suddenHandled) { this.deduct('suddenMiss', '미조치'); this.suddenHandled = true; }
+        this.suddenActive = false;
+        break;
+      case 'railroad':
+        if (!this.railStopped) this.deduct('railNoStop');
+        break;
+    }
+    this.completed.add(stage.id);
+    this.stageIndex += 1;
+    const next = STAGES[this.stageIndex];
+    this.stage = next ? next.id : 'done';
+    if (next) this.onStageEnter(next, ui);
+  }
+
+  onStageEnter(stage, ui) {
+    switch (stage.id) {
+      case 'parking':
+        this.say('전방 직각주차 구역에 주차하십시오. 우측 방향지시등을 켜십시오.');
+        this.parkTimer = 0;
+        break;
+      case 'signal':
+        this.say('신호교차로입니다. 신호를 확인하고 정지선을 지키십시오.');
+        break;
+      case 'ramp':
+        this.say('우회전 후 경사로입니다. 정지구간에 일단 정지한 뒤 30초 이내에 출발하십시오.');
+        break;
+      case 'accel':
+        this.say('우회전 후 가속구간입니다. 20km/h 이상으로 통과하십시오.');
+        break;
+      case 'sudden':
+        this.suddenActive = true;
+        this.suddenTimer = 0;
+        this.say('돌발! 즉시 정지하고 비상점멸등을 켜십시오.', 'alert');
+        this.showPart('hazard', '돌발상황 · 비상점멸등을 켜십시오', 3, 4);
+        break;
+      case 'railroad':
+        this.say('우회전 후 철길건널목입니다. 정지선 앞에서 반드시 일시정지하십시오.');
+        break;
+      case 'finish':
+        this.say('좌회전하여 반대 차로로 진입한 뒤 종료 지점에 정차하십시오.');
+        break;
+    }
+  }
+
+  // 방향지시등 지점 판정 (진행거리 기준)
+  checkSignalPoints(ui) {
+    for (const p of SIGNAL_POINTS) {
+      if (this.signalDone.has(p.id)) continue;
+      if (this.progress < p.from) continue;
+      if (this.progress < p.at) {
+        // 안내 구간: 아직 켜지 않았으면 부품을 띄워 준다
+        if (ui.turnSignal !== p.side) {
+          this.showPart('turnSignal',
+            `${p.why} · ${p.side === 'left' ? '좌측' : '우측'} 방향지시등을 켜십시오`, 2, 1.0);
+        }
+        continue;
+      }
+      this.signalDone.add(p.id);
+      if (ui.turnSignal !== p.side) {
+        this.deduct('signalMiss', `${p.why} 시 ${p.side === 'left' ? '좌측' : '우측'} 미점등`);
+      }
     }
   }
 
@@ -368,156 +469,119 @@ export class Exam {
     this.detail = `출발까지 ${Math.max(0, 30 - this.startTimer).toFixed(0)}초 · 좌측 방향지시등 · 주차 브레이크 해제 · D단`;
 
     if (v.parkingBrake) this.showPart('parkingBrake', '주차 브레이크를 해제하십시오', 2, 1.0);
-    else if (ui.turnSignal !== 'left' && Math.abs(v.speed) < 0.4) {
-      this.showPart('turnSignal', '좌측 방향지시등을 켜고 출발하십시오', 2, 1.0);
-    } else if (v.gear !== 'D' && Math.abs(v.speed) < 0.4) {
+    else if (v.gear !== 'D' && Math.abs(v.speed) < 0.4) {
       this.showPart('gear', '기어를 D(주행)에 놓으십시오', 2, 1.0);
     }
 
     if (!this.movedFromStart && Math.abs(v.speed) > 0.6) {
       this.movedFromStart = true;
-      if (ui.turnSignal !== 'left') this.deduct('signalMiss', '출발 시 좌측 미점등');
       if (v.parkingBrake) this.deduct('brakeNotOff');
       if (!v.seatbelt) this.fail('noSeatbelt');
     }
-    if (this.startTimer > 30 && !this.movedFromStart) { this.fail('noStart'); return; }
-
-    if (v.x > 4) {
-      this.completeStage('start', 'parking');
-      this.say('전방 직각주차 구역에 주차하십시오. 우측 방향지시등을 켜십시오.');
-      this.parkTimer = 0;
-    }
+    if (this.startTimer > 30 && !this.movedFromStart) this.fail('noStart');
   }
 
   // 직각주차
   stParking(dt, ui) {
     const v = this.v;
     const bay = PARKING_BAY;
+    this.parkTimer += dt;
+
+    if (this.parked) {
+      this.detail = '출차 후 신호교차로로 진행하십시오.';
+      return;
+    }
+
     const inBay = v.wheelPoints().every(([x, z]) =>
       x > bay.x1 + 0.05 && x < bay.x2 - 0.05 && z > bay.z1 + 0.05 && z < bay.z2 - 0.05);
+    const left = Math.max(0, 120 - this.parkTimer);
+    this.detail = `직각주차 · 남은 시간 ${left.toFixed(0)}초 · 후진(R)으로 주차구획에 진입`;
 
-    if (this.parkPhase === 'approach') {
-      this.parkTimer += dt;
-      this.detail = `직각주차 · 경과 ${this.parkTimer.toFixed(0)}초 / 120초 · 후진(R)으로 주차구획에 진입`;
-      if (!this._parkSignalChecked && v.x > 17) {
-        this._parkSignalChecked = true;
-        if (ui.turnSignal !== 'right') this.deduct('signalMiss', '직각주차 진입 시 우측 미점등');
-      }
-      if (v.gear !== 'R' && v.x > 26 && v.z > 4 && Math.abs(v.speed) < 0.3) {
-        this.showPart('gear', '기어를 R(후진)에 놓고 주차구획으로 후진하십시오', 2, 1.0);
-      }
-      if (this.parkTimer > 120) this.deduct('parkTimeout');
+    if (v.gear !== 'R' && v.z > CL.legA + HALF && Math.abs(v.speed) < 0.3 && !inBay) {
+      this.showPart('gear', '기어를 R(후진)에 놓고 주차구획으로 후진하십시오', 2, 1.0);
+    }
+    if (this.parkTimer > 120) this.deduct('parkTimeout');
 
-      if (inBay && Math.abs(v.speed) < 0.15) {
-        this.parkStillTimer += dt;
-        if (this.parkStillTimer > 1.0) {
-          this.parkPhase = 'exit';
-          this.note('주차 완료', 'ok');
-          this.say('주차되었습니다. 전진하여 출차한 뒤 계속 진행하십시오.');
-          this.showPart('gear', '기어를 D(주행)로 변속하고 출차하십시오', 3, 3);
-        }
-      } else {
-        this.parkStillTimer = 0;
+    if (inBay && Math.abs(v.speed) < 0.15) {
+      this.parkStillTimer += dt;
+      if (this.parkStillTimer > 1.0) {
+        this.parked = true;
+        this.note('주차 완료', 'ok');
+        this.say('주차되었습니다. 전진하여 출차한 뒤 계속 진행하십시오.');
+        this.showPart('gear', '기어를 D(주행)로 변속하고 출차하십시오', 3, 3);
       }
-      // (2) 코스를 이행하지 아니한 때 → 실격
-      if (v.x > 56) { this.fail('courseSkip'); return; }
     } else {
-      this.detail = '출차 후 신호교차로로 진행하십시오.';
-      if (v.z < CL.legA + HALF - 0.5 && v.x > 33) {
-        this.completeStage('parking', 'signal');
-        this.say('신호교차로입니다. 신호를 확인하고 좌회전하십시오. 좌측 방향지시등을 켜십시오.');
-      }
+      this.parkStillTimer = 0;
     }
   }
 
   // 신호교차로
   stSignal(dt, ui) {
     const v = this.v;
-    const STOP_X = this.course.stopLineX;
     const front = v.toWorld(NOSE, 0);
     const names = { red: '적색', yellow: '황색', green: '녹색' };
-    this.detail = `신호: ${names[this.signalPhase]} · 정지선 준수 · 좌회전 방향지시등`;
+    const dist = POINT.stopLineX - front[0];
+    this.detail = dist > 0.3
+      ? `신호: ${names[this.signalPhase]} · 정지선까지 ${dist.toFixed(1)}m`
+      : `신호: ${names[this.signalPhase]} · 교차로 통과 중`;
 
-    if (front[0] > STOP_X - 12 && front[0] < STOP_X && ui.turnSignal !== 'left') {
-      this.showPart('turnSignal', '좌회전 · 좌측 방향지시등을 켜십시오', 2, 1.0);
-    }
-    if (!this._crossedStopLine && front[0] >= STOP_X) {
+    if (!this._crossedStopLine && front[0] >= POINT.stopLineX) {
       this._crossedStopLine = true;
       if (this.signalPhase === 'red') { this.fail('signalRun'); return; }
       if (this.signalPhase === 'yellow' && v.speedKmh < 12) { this.fail('signalRun'); return; }
-      if (ui.turnSignal !== 'left') this.deduct('signalMiss', '좌회전 시 미점등');
-    }
-    if (v.z < -8) {
-      this.completeStage('signal', 'ramp');
-      this.say('경사로입니다. 정지구간에 일단 정지한 뒤 30초 이내에 출발하십시오.');
+      this.note('신호 준수 확인', 'ok');
     }
   }
 
-  // 경사로
+  // 경사로 (진행 방향 +Z)
   stRamp(dt, ui) {
     const v = this.v;
     const axleZ = v.toWorld(FRONT_AXLE, 0)[1];
     const noseZ = v.toWorld(NOSE, 0)[1];
 
     if (!this.rampStopped) {
-      const dist = axleZ - RAMP.stopZ2;
+      const dist = RAMP.stopZ1 - axleZ;
       this.detail = dist > 0.2
         ? `경사로 · 정지구간까지 ${dist.toFixed(1)}m · 노란 표지 사이에 앞바퀴를 세우십시오`
         : '경사로 · 정지구간 안입니다. 정지하십시오';
-      if (axleZ <= RAMP.stopZ2 && axleZ >= RAMP.stopZ1 && Math.abs(v.speed) < 0.12) {
+      if (axleZ >= RAMP.stopZ1 && axleZ <= RAMP.stopZ2 && Math.abs(v.speed) < 0.12) {
         this.rampStopped = true;
         this.rampWaitTimer = 0;
         this.note('정지구간 정차 확인', 'ok');
         this.say('30초 이내에 출발하십시오. 뒤로 밀려 앞범퍼가 사면을 벗어나면 실격입니다.');
-      } else if (axleZ < RAMP.stopZ1 - 0.4) {
-        this.deduct('rampNoStop');
-        this.rampStopped = true;
-        this.rampCleared = true;
       }
     } else if (!this.rampCleared) {
       this.rampWaitTimer += dt;
       this.detail = `경사로 출발 · 남은 시간 ${Math.max(0, 30 - this.rampWaitTimer).toFixed(0)}초`;
       // (5) 앞범퍼가 경사로 사면을 벗어난 때 → 실격
-      if (noseZ > RAMP.upStart) { this.fail('rampRoll'); return; }
-      if (noseZ > RAMP.upStart - 2.0) {
-        this.detail = `뒤로 밀리고 있습니다! 앞범퍼가 사면 끝까지 ${(RAMP.upStart - noseZ).toFixed(1)}m`;
+      if (noseZ < RAMP.upStart) { this.fail('rampRoll'); return; }
+      if (noseZ < RAMP.upStart + 2.0) {
+        this.detail = `뒤로 밀리고 있습니다! 앞범퍼가 사면 끝까지 ${(noseZ - RAMP.upStart).toFixed(1)}m`;
         this.showPart('pedals', '브레이크를 밟고 다시 출발하십시오', 2, 0.8);
       }
       // (5) 정지구간 이행 후 30초 초과 → 실격
       if (this.rampWaitTimer > 30) { this.fail('rampSlow'); return; }
-      if (axleZ < RAMP.stopZ1 - 2.5) {
+      if (axleZ > RAMP.stopZ2 + 2.5) {
         this.rampCleared = true;
         this.note('경사로 출발 완료', 'ok');
       }
     } else {
       this.detail = '경사로 내리막 · 속도를 줄여 안전하게 통과하십시오.';
     }
-
-    if (v.z < RAMP.downEnd - 2) {
-      this.completeStage('ramp', 'accel');
-      this.say('좌회전 후 가속구간입니다. 20km/h 이상으로 통과하십시오.');
-    }
   }
 
-  // 가속구간
+  // 가속구간 (진행 방향 -X)
   stAccel(dt, ui) {
     const v = this.v;
-    const acc = this.course.accel;
-    const onLegC = v.z < CL.legC + HALF;
-    if (onLegC && v.x < acc.x2 && v.x > acc.x1) {
-      this.accelActive = true;
+    const inZone = v.x <= POINT.accelX2 && v.x >= POINT.accelX1 &&
+      Math.abs(v.z - CL.legC) < HALF + 1;
+    if (inZone) {
       this.accelBest = Math.max(this.accelBest, v.speedKmh);
       this.detail = `가속구간 · 현재 ${v.speedKmh.toFixed(0)}km/h · 최고 ${this.accelBest.toFixed(0)}km/h (20km/h 이상 필요)`;
-    } else if (onLegC && v.x <= acc.x1 && this.accelActive) {
-      if (this.accelBest < 20) this.deduct('accelSlow', `최고 ${this.accelBest.toFixed(0)}km/h`);
-      else this.note(`가속구간 통과 · 최고 ${this.accelBest.toFixed(0)}km/h`, 'ok');
-      this.completeStage('accel', 'sudden');
-      this.suddenActive = true;
-      this.suddenTimer = 0;
-      this.say('돌발! 즉시 정지하고 비상점멸등을 켜십시오.', 'alert');
-      this.showPart('hazard', '돌발상황 · 비상점멸등을 켜십시오', 3, 4);
+    } else if (v.x > POINT.accelX2) {
+      this.detail = `가속구간까지 ${(v.x - POINT.accelX2).toFixed(0)}m · 20km/h 이상으로 통과하십시오`;
     } else {
-      this.detail = '좌회전 후 가속구간으로 진행하십시오.';
+      this.detail = '가속구간 통과';
     }
   }
 
@@ -535,58 +599,43 @@ export class Exam {
         this.say('비상점멸등을 끄고 다시 출발하십시오.');
       } else if (this.suddenTimer > 6) {
         this.suddenHandled = true;
-        this.deduct('suddenMiss', '미조치');
+        this.deduct('suddenMiss', '2초 이내 정지 실패');
       }
     } else {
       this.detail = '비상점멸등을 해제하고 출발하십시오.';
       if (ui.hazard) this.showPart('hazard', '비상점멸등을 해제하십시오', 2, 1.0);
-      if (!ui.hazard && v.x < 22) {
-        this.suddenActive = false;
-        this.completeStage('sudden', 'railroad');
-        this.say('철길건널목입니다. 정지선 앞에서 반드시 일시정지하십시오.');
-      }
+      else this.suddenActive = false;
     }
   }
 
-  // 철길건널목
+  // 철길건널목 (진행 방향 -Z)
   stRailroad(dt, ui) {
     const v = this.v;
     const noseZ = v.toWorld(NOSE, 0)[1];
-    const STOP_Z = this.course.railStopZ;
+    const STOP_Z = POINT.railStopZ;
 
     if (!this.railStopped) {
-      const dist = STOP_Z - noseZ;
+      const dist = noseZ - STOP_Z;
       this.detail = dist > 0.3
         ? `철길건널목 · 정지선까지 ${dist.toFixed(1)}m · 반드시 일시정지`
         : '철길건널목 · 정지선 앞 일시정지';
-      if (noseZ > STOP_Z - 4.0 && noseZ < STOP_Z && Math.abs(v.speed) < 0.15) {
+      if (noseZ < STOP_Z + 4.0 && noseZ > STOP_Z && Math.abs(v.speed) < 0.15) {
         this.railStopped = true;
         this.note('일시정지 확인', 'ok');
         this.say('좌우를 확인하고 통과하십시오.');
-      } else if (noseZ >= STOP_Z + 0.2) {
-        this.railStopped = true;
-        this.deduct('railNoStop');
       }
     } else {
-      this.detail = '건널목을 통과한 뒤 우회전하여 종료 지점으로 향하십시오.';
-    }
-    if (v.z > CL.legE - 12) {
-      this.completeStage('railroad', 'finish');
-      this.say('우회전하여 종료 지점에 정차하십시오. 우측 방향지시등을 켜십시오.');
+      this.detail = '건널목을 통과한 뒤 좌회전하여 종료 지점으로 향하십시오.';
     }
   }
 
   // 종료
   stFinish(dt, ui) {
     const v = this.v;
-    if (!this._finishSignalChecked && v.z > CL.legE - 6 && v.x < CL.legD + 1 && v.x > CL.legD - 6) {
-      this._finishSignalChecked = true;
-      if (ui.turnSignal !== 'right') this.deduct('signalMiss', '종료 지점 진입 시 우측 미점등');
-    }
-    if (this.finishChecked) return;
+    if (this.finishDone) return;
 
-    const inZone = v.x < -8.0 && v.x > -12.8 &&
-      v.z < CL.legE - 0.2 && v.z > CL.legE - EDGE + 0.2;
+    const inZone = v.x < POINT.finishX2 && v.x > POINT.finishX1 &&
+      v.z < CL.legA - 0.2 && v.z > CL.legA - EDGE + 0.2;
     this.detail = inZone
       ? '정차 후 기어 P · 주차 브레이크 체결 · 시동 정지'
       : '노란선 사이의 종료 지점에 정차하십시오.';
@@ -598,23 +647,24 @@ export class Exam {
       else if (v.engineOn) this.showPart('ignition', '시동을 끄십시오', 3, 1.0);
 
       if (v.gear === 'P' && v.parkingBrake && !v.engineOn) {
-        this.finishChecked = true;
-        this.completeStage('finish', 'done');
+        this.finishDone = true;
+        this.completed.add('finish');
         this.note('종료 조작 완료', 'ok');
         this.finish();
       } else if (this.finishStill > 30) {
-        this.finishChecked = true;
+        this.finishDone = true;
         this.deduct('finishMiss');
-        this.completeStage('finish', 'done');
+        this.completed.add('finish');
         this.finish();
       }
     } else {
       this.finishStill = 0;
     }
-    if (v.x < -13.4) {
-      this.finishChecked = true;
+    // 종료 지점을 지나쳐 코스 끝까지 간 경우
+    if (v.x < POINT.finishX1 - 2) {
+      this.finishDone = true;
       this.deduct('finishMiss', '정차 위치 이탈');
-      this.completeStage('finish', 'done');
+      this.completed.add('finish');
       this.finish();
     }
   }

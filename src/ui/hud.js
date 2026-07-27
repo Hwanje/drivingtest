@@ -2,7 +2,7 @@
 
 import { RECTS, ROUTE, PARKING_BAY, RAMP, CL, ROAD, HALF } from '../sim/course.js';
 
-const MAP_BOUNDS = { x1: -18, x2: 86, z1: -80, z2: 20 };
+const MAP_BOUNDS = { x1: -22, x2: 94, z1: -13, z2: 56 };
 
 export class Hud {
   constructor(els) {

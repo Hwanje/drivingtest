@@ -3,7 +3,7 @@
 import { Renderer3D } from './gfx/renderer.js';
 import { M4, wrapAngle } from './gfx/math.js';
 import { Node } from './gfx/mesh.js';
-import { buildCourse, LANE_C } from './sim/course.js';
+import { buildCourse, LANE_C, POINT } from './sim/course.js';
 import { Vehicle } from './sim/vehicle.js';
 import { buildCar, EYE } from './sim/carmodel.js';
 import { Exam, PASS_SCORE, TIME_LIMIT } from './sim/exam.js';
@@ -28,7 +28,7 @@ const car = buildCar();
 world.add(car.root);
 
 const vehicle = new Vehicle();
-const exam = new Exam(vehicle, course);
+const exam = new Exam(vehicle);
 const input = new Input();
 const sound = new Sound();
 
@@ -219,7 +219,7 @@ function toast(text, tone = 'info') {
 // ---------------------------------------------------------------- 재시작
 
 function restart() {
-  vehicle.reset(-12.2, LANE_C, 0);
+  vehicle.reset(POINT.startX, LANE_C, 0);
   exam.reset();
   ui.turnSignal = null;
   ui.hazard = false;
