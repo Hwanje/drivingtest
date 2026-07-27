@@ -219,13 +219,13 @@ function buildCockpit() {
   const m = new Mesh();
   const P = (x, y, z) => [x, y, z];
 
-  // 눈높이 1.62m · 눈 위치 x=0.85 를 기준으로, 카울 너머 약 4.5m 앞부터
-  // 노면이 보이도록 맞춘 값들. 캡오버 트럭이라 승용차보다 시야가 훨씬 넓다.
-  const COWL = 2.05;        // 앞유리 아랫변(대시보드 앞끝)
-  const COWL_Y = 1.32;
+  // 눈높이 1.62m · 눈 위치 x=0.85 기준. 캡오버 트럭은 앞유리가 눈앞에 거의
+  // 수직으로 서 있고 아랫변이 낮아, 카울 너머 4.5m 앞부터 노면이 보인다.
+  const COWL = 2.15;        // 앞유리 아랫변(대시보드 앞끝)
+  const COWL_Y = 1.15;
   const DASH_BACK = 1.40;   // 대시보드 뒤끝(운전자 쪽)
-  const DASH_Y = 1.26;
-  const ROOF_F = 1.98;      // 지붕 앞단
+  const DASH_Y = 1.13;
+  const ROOF_F = 2.05;      // 지붕 앞단
   const ROOF_Y = SPEC.height - 0.07;
   const Wi = SPEC.width / 2 - 0.06;
 
@@ -237,13 +237,13 @@ function buildCockpit() {
   m.merge(box(0.62, 0.5, Wi * 2, [40, 42, 47]), M4.translate(1.72, 0.74, 0));
 
   // 계기판 후드
-  m.merge(box(0.32, 0.14, 0.52, [30, 32, 36]), M4.translate(1.58, 1.33, -0.44));
-  m.addPoly([P(1.44, 1.29, -0.70), P(1.72, 1.29, -0.70),
-    P(1.72, 1.29, -0.18), P(1.44, 1.29, -0.18)], [18, 22, 28], { unlit: true });
+  m.merge(box(0.32, 0.14, 0.52, [30, 32, 36]), M4.translate(1.58, 1.16, -0.44));
+  m.addPoly([P(1.44, 1.12, -0.70), P(1.72, 1.12, -0.70),
+    P(1.72, 1.12, -0.18), P(1.44, 1.12, -0.18)], [18, 22, 28], { unlit: true });
 
   // 센터페시아
-  m.merge(box(0.20, 0.32, 0.46, [50, 53, 59]), M4.translate(1.56, 1.06, 0.26));
-  m.merge(box(0.02, 0.13, 0.34, [26, 34, 44]), M4.translate(1.45, 1.13, 0.26));
+  m.merge(box(0.20, 0.32, 0.46, [50, 53, 59]), M4.translate(1.56, 0.92, 0.26));
+  m.merge(box(0.02, 0.13, 0.34, [26, 34, 44]), M4.translate(1.45, 0.99, 0.26));
 
   // A필러 · 지붕 앞단 (트럭은 필러가 거의 수직이다)
   for (const sgn of [-1, 1]) {
@@ -252,7 +252,39 @@ function buildCockpit() {
       P(ROOF_F, ROOF_Y, zz - 0.07 * sgn), P(COWL, COWL_Y, zz - 0.07 * sgn)], [92, 96, 104]);
   }
   m.merge(box(0.16, 0.06, Wi * 2, [82, 86, 94]), M4.translate(ROOF_F - 0.04, ROOF_Y, 0));
-  m.merge(box(0.06, 0.10, 0.28, [36, 38, 42]), M4.translate(1.74, ROOF_Y - 0.15, 0.04));
+  // 실내 거울. 눈에서 1m 도 안 떨어져 있어 조금만 크거나 낮아도 시야 한가운데
+  // 검은 판때기가 떠 있는 것처럼 보인다. 지붕 앞단에 바짝 붙여 매단다.
+  m.merge(box(0.05, 0.075, 0.21, [52, 55, 61]), M4.translate(1.86, ROOF_Y - 0.10, 0.10));
+  m.merge(box(0.012, 0.062, 0.19, [96, 104, 116]), M4.translate(1.83, ROOF_Y - 0.10, 0.10));
+  m.merge(box(0.035, 0.05, 0.035, [70, 73, 80]), M4.translate(1.93, ROOF_Y - 0.05, 0.10));
+
+  // 캡 내부 껍데기.
+  // 이게 없으면 앞유리 테두리 위·옆으로 바깥 하늘이 그대로 비쳐서, 지붕 앞단이
+  // 도로 위에 떠 있는 육교처럼 보인다. 천장 · 도어 · 뒷벽으로 시야를 닫는다.
+  const CAB_BACK = -0.35;   // 캡 뒷벽
+  const SILL = 1.10;        // 도어 창틀 아랫변
+  const CEIL = [58, 60, 66];
+  const TRIM = [52, 55, 61];
+  // 천장 (앞유리 윗변 뒤로 이어진다)
+  m.addPoly([P(ROOF_F, ROOF_Y, -Wi), P(ROOF_F, ROOF_Y, Wi),
+    P(CAB_BACK, ROOF_Y, Wi), P(CAB_BACK, ROOF_Y, -Wi)], CEIL);
+  for (const sgn of [-1, 1]) {
+    const zz = Wi * sgn;
+    // 도어 안쪽 판(창틀 아래) — 창은 열어 두어 옆이 보인다
+    m.addPoly([P(COWL, COWL_Y, zz), P(COWL, 0.30, zz),
+      P(CAB_BACK, 0.30, zz), P(CAB_BACK, SILL, zz)], TRIM);
+    // 창틀 윗레일
+    m.addPoly([P(COWL, ROOF_Y - 0.06, zz), P(CAB_BACK, ROOF_Y - 0.06, zz),
+      P(CAB_BACK, ROOF_Y, zz), P(COWL, ROOF_Y, zz)], [74, 77, 84]);
+    // B필러
+    m.merge(box(0.09, ROOF_Y - 0.30, 0.05, [70, 73, 80]),
+      M4.translate(CAB_BACK + 0.06, (ROOF_Y + 0.30) / 2, zz - 0.03 * sgn));
+  }
+  // 뒷벽 · 바닥
+  m.addPoly([P(CAB_BACK, 0.30, -Wi), P(CAB_BACK, 0.30, Wi),
+    P(CAB_BACK, ROOF_Y, Wi), P(CAB_BACK, ROOF_Y, -Wi)], [48, 50, 56]);
+  m.addPoly([P(1.90, 0.30, -Wi), P(1.90, 0.30, Wi),
+    P(CAB_BACK, 0.30, Wi), P(CAB_BACK, 0.30, -Wi)], [34, 35, 39]);
   node.add(new Node('interior', m));
 
   // 스티어링 휠 (트럭은 승용차보다 크고 더 눕혀져 있다)
@@ -268,7 +300,7 @@ function buildCockpit() {
   wheelNode.add(new Node('rim', wm));
 
   const wheelMount = new Node('mount', null, M4.chain(
-    M4.translate(1.44, 1.18, -0.44),
+    M4.translate(1.44, 1.13, -0.44),
     M4.rotY(-Math.PI / 2),
     M4.rotX(-38 * Math.PI / 180),      // 트럭 특유의 눕힌 컬럼 각도
   ));

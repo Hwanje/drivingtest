@@ -78,7 +78,9 @@ export const RECTS = [
 
   // 직각주차: 순환 코스 안쪽의 전면 통로와 주차구획.
   // 1톤 화물차(전장 5.11m · 전폭 1.74m)가 들어가는 폭 3.0m · 깊이 6.5m 구획.
-  { id: 'apron', x1: 20, x2: 46, z1: CL.legA + HALF, z2: 11.0 },
+  // 통로는 본선과 맞닿은 한 장의 직사각형으로 둔다. 양 끝을 얕은 사각형으로
+  // 덧대면 위에서 봤을 때 경계가 계단처럼 끊긴다.
+  { id: 'apron', x1: 17.0, x2: 49.5, z1: CL.legA + HALF, z2: 11.0 },
   { id: 'bay', x1: 30.0, x2: 33.0, z1: 11.0, z2: 17.5 },
 
   // 교차 지점 우각부(모서리 곡선). 실제 도로도 안쪽 모서리가 둥글게 처리되어 있다.
@@ -198,8 +200,8 @@ export function pointAt(s) {
 // ---------------------------------------------------------------------------
 const DRIVE_LANES = [
   // 출발 직선 동쪽 방향: 우측 차로는 중앙선보다 +Z 쪽
-  { axis: 'z', center: CL.legA, side: -1, along: 'x', range: [POINT.startX, 17] },
-  { axis: 'z', center: CL.legA, side: -1, along: 'x', range: [50, CL.legB - HALF - 10] },
+  { axis: 'z', center: CL.legA, side: -1, along: 'x', range: [POINT.startX, 15] },
+  { axis: 'z', center: CL.legA, side: -1, along: 'x', range: [51, CL.legB - HALF - 10] },
   // 경사로 구간(진행 -? 실제로는 +Z): 우측 차로는 -X 쪽
   { axis: 'x', center: CL.legB, side: +1, along: 'z', range: [CL.legA + HALF + 10, CL.legC - HALF - 10] },
   // 가속 구간(진행 -X): 우측 차로는 -Z 쪽
@@ -494,6 +496,34 @@ function railroad() {
   return node;
 }
 
+// 지면.
+//
+// 안개는 면 하나당 한 번, 그 면의 평균 깊이로 계산한다. 그래서 지면을 커다란
+// 사각형 하나로 깔면 평균 깊이가 수백 미터가 되어 바로 앞 발밑까지 통째로
+// 안개색(하늘색)으로 칠해진다 — 지평선이 사라지고 코스가 하늘에 떠 있는 것처럼
+// 보인다. 거리에 따라 커지는 격자로 잘라서 깔면 안개가 거리별로 제대로 먹는다.
+function groundPlane() {
+  const mesh = new Mesh();
+  // 코스 중심에서 바깥으로 점점 넓어지는 분할선
+  const cuts = (c, near, far) => {
+    const out = [c];
+    for (let step = near, d = c; d < c + far; step *= 1.32) { d += step; out.push(d); }
+    for (let step = near, d = c; d > c - far; step *= 1.32) { d -= step; out.unshift(d); }
+    return out;
+  };
+  const xs = cuts(37, 14, 460);
+  const zs = cuts(24, 14, 440);
+  for (let i = 0; i < xs.length - 1; i++) {
+    for (let j = 0; j < zs.length - 1; j++) {
+      // 칸 경계가 띠로 보이지 않을 만큼만 색을 흔든다
+      const tint = 0.985 + (((i * 7 + j * 13) % 3) / 3) * 0.03;
+      mesh.merge(quadXZ(xs[i], zs[j], xs[i + 1], zs[j + 1], -0.02,
+        shade(COL.ground, tint), { layer: 0 }));
+    }
+  }
+  return mesh;
+}
+
 function scenery() {
   const node = new Node('scenery');
   const m = new Mesh();
@@ -536,9 +566,7 @@ function scenery() {
 export function buildCourse() {
   const root = new Node('course');
 
-  const ground = new Mesh();
-  ground.merge(quadXZ(-440, -420, 480, 460, -0.02, COL.ground, { layer: 0 }));
-  root.add(new Node('ground', ground));
+  root.add(new Node('ground', groundPlane()));
 
   // 노면
   const road = new Mesh();

@@ -349,7 +349,9 @@ function updateCamera(dt) {
   if (cameraMode === 'interior') {
     // 1톤 화물차 운전자 눈높이(노면에서 1.62m). 캡오버형이라 시야가 승용차보다 높다.
     camEye = M4.xformPoint(carM, EYE);
-    camTarget = M4.xformPoint(carM, [EYE[0] + 16, EYE[1] - 0.42, EYE[2]]);
+    // 시선을 약 6도 아래로 둔다. 눈과 지붕 사이가 30cm 밖에 안 되는 캡오버라
+    // 수평으로 보면 화면 위쪽 1/4 이 천장으로 차 버린다.
+    camTarget = M4.xformPoint(carM, [EYE[0] + 16, EYE[1] - 1.72, EYE[2]]);
   } else if (cameraMode === 'chase') {
     const want = M4.xformPoint(M4.chain(M4.translate(v.x, v.y, v.z), M4.rotY(-v.heading)),
       [-9.2, 3.3, 0]);
