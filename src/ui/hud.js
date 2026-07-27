@@ -1,8 +1,8 @@
 // 계기판 · 미니맵 · 전면 유리 효과(와이퍼/빗방울) 렌더링.
 
-import { RECTS, ROUTE, PARKING_BAY, RAMP, CL, LANE, HALF } from '../sim/course.js';
+import { RECTS, ROUTE, PARKING_BAY, RAMP, CL, ROAD, HALF } from '../sim/course.js';
 
-const MAP_BOUNDS = { x1: -12, x2: 60, z1: -41, z2: 14 };
+const MAP_BOUNDS = { x1: -18, x2: 86, z1: -80, z2: 20 };
 
 export class Hud {
   constructor(els) {
@@ -57,7 +57,7 @@ export class Hud {
     ctx.stroke();
 
     const A0 = Math.PI * 0.75, A1 = Math.PI * 2.25;
-    const MAXV = 60;
+    const MAXV = 60;   // 기능시험 속도대
     // 눈금
     ctx.lineWidth = 2;
     for (let s = 0; s <= MAXV; s += 10) {
@@ -192,7 +192,7 @@ export class Hud {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(X(PARKING_BAY.x1), Z(PARKING_BAY.z1),
       (PARKING_BAY.x2 - PARKING_BAY.x1) * s, (PARKING_BAY.z2 - PARKING_BAY.z1) * s);
-    ctx.strokeRect(X(CL.legB - HALF), Z(RAMP.stopZ1), LANE * s, (RAMP.stopZ2 - RAMP.stopZ1) * s);
+    ctx.strokeRect(X(CL.legB - HALF), Z(RAMP.stopZ1), ROAD * s, (RAMP.stopZ2 - RAMP.stopZ1) * s);
 
     // 주행 경로
     ctx.beginPath();

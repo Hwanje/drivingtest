@@ -8,26 +8,31 @@ import { groundHeight } from './course.js';
 
 const G = 9.81;
 
+// 제1종 보통면허 기능시험 차량 = 1톤 화물차(현대 포터 II · 기아 봉고 III 급).
+// 시험차량 기준은 전장 465cm 이상 · 전폭 169cm 이상이며, 여기서는 장축 모델
+// (전장 5.11m · 전폭 1.74m · 전고 1.97m · 축거 2.64m) 제원을 따랐다.
+// 2024년 7월부터 이들 차종에 자동변속기 모델이 추가되어 1종보통 오토 시험이 가능하다.
 export const SPEC = {
-  mass: 1420,          // kg
-  wheelbase: 2.62,     // m
-  frontOverhang: 0.92,
-  rearOverhang: 0.88,
-  width: 1.80,
-  height: 1.46,
-  trackHalf: 0.79,
-  wheelRadius: 0.31,
-  maxSteer: 0.60,      // rad (약 34도)
-  driveForce: 5200,    // N
-  power: 62000,        // W
-  brakeForce: 11000,   // N
-  parkingBrakeForce: 6200,
-  creepSpeed: 1.55,    // m/s (약 5.6km/h)
-  creepForce: 1250,
-  maxSpeedD: 22,       // m/s (약 80km/h)
-  maxSpeedR: 4.2,      // m/s (약 15km/h)
-  rollingResist: 210,
-  dragCoef: 0.46,
+  mass: 1900,          // kg (공차)
+  wheelbase: 2.64,     // m
+  frontOverhang: 1.05, // 캡오버형이라 앞 오버행이 짧다
+  rearOverhang: 1.42,
+  length: 5.11,
+  width: 1.74,
+  height: 1.97,
+  trackHalf: 0.735,    // 윤거 약 1.47m
+  wheelRadius: 0.34,
+  maxSteer: 0.63,      // rad (약 36도) · 최소회전반경 약 5.1m
+  driveForce: 6400,    // N
+  power: 60000,        // W
+  brakeForce: 13500,   // N
+  parkingBrakeForce: 7600,
+  creepSpeed: 1.45,    // m/s (약 5.2km/h)
+  creepForce: 1600,
+  maxSpeedD: 22,       // m/s
+  maxSpeedR: 4.0,      // m/s
+  rollingResist: 300,
+  dragCoef: 0.62,
 };
 
 export const GEARS = ['P', 'R', 'N', 'D'];

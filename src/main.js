@@ -3,9 +3,9 @@
 import { Renderer3D } from './gfx/renderer.js';
 import { M4, wrapAngle } from './gfx/math.js';
 import { Node } from './gfx/mesh.js';
-import { buildCourse } from './sim/course.js';
+import { buildCourse, LANE_C } from './sim/course.js';
 import { Vehicle } from './sim/vehicle.js';
-import { buildCar } from './sim/carmodel.js';
+import { buildCar, EYE } from './sim/carmodel.js';
 import { Exam, PASS_SCORE, TIME_LIMIT } from './sim/exam.js';
 import { PartViewer } from './parts/viewer.js';
 import { Input } from './ui/input.js';
@@ -28,7 +28,7 @@ const car = buildCar();
 world.add(car.root);
 
 const vehicle = new Vehicle();
-const exam = new Exam(vehicle);
+const exam = new Exam(vehicle, course);
 const input = new Input();
 const sound = new Sound();
 
@@ -219,7 +219,7 @@ function toast(text, tone = 'info') {
 // ---------------------------------------------------------------- 재시작
 
 function restart() {
-  vehicle.reset(-7, 0, 0);
+  vehicle.reset(-12.2, LANE_C, 0);
   exam.reset();
   ui.turnSignal = null;
   ui.hazard = false;
@@ -347,12 +347,12 @@ function updateCamera(dt) {
     M4.rotX(v.roll),
   );
   if (cameraMode === 'interior') {
-    // 운전자 눈높이: 스티어링 휠에서 약 0.65m 뒤, 노면에서 1.26m
-    camEye = M4.xformPoint(carM, [-0.03, 1.32, -0.38]);
-    camTarget = M4.xformPoint(carM, [14, 1.06, -0.38]);
+    // 1톤 화물차 운전자 눈높이(노면에서 1.62m). 캡오버형이라 시야가 승용차보다 높다.
+    camEye = M4.xformPoint(carM, EYE);
+    camTarget = M4.xformPoint(carM, [EYE[0] + 16, EYE[1] - 0.42, EYE[2]]);
   } else if (cameraMode === 'chase') {
     const want = M4.xformPoint(M4.chain(M4.translate(v.x, v.y, v.z), M4.rotY(-v.heading)),
-      [-7.2, 2.55, 0]);
+      [-9.2, 3.3, 0]);
     const k = Math.min(1, dt * 4.5);
     camEye = [
       camEye[0] + (want[0] - camEye[0]) * k,
@@ -360,9 +360,9 @@ function updateCamera(dt) {
       camEye[2] + (want[2] - camEye[2]) * k,
     ];
     camTarget = M4.xformPoint(M4.chain(M4.translate(v.x, v.y, v.z), M4.rotY(-v.heading)),
-      [4.5, 1.05, 0]);
+      [5.0, 1.4, 0]);
   } else {
-    camEye = [v.x, v.y + 30, v.z + 0.001];
+    camEye = [v.x, v.y + 38, v.z + 0.001];
     camTarget = [v.x, v.y, v.z];
   }
 }
