@@ -50,9 +50,12 @@ export const DEDUCTIONS = {
   roughStart:    ['급조작 · 급출발', 7, 3],
   overSpeed:     ['지시속도 위반 (과속)', 10, 3],
   accelSlow:     ['가속구간 지시속도 미달', 10, 1],
-  centerLine:    ['중앙선 침범', 10, 3],
+  centerLine:    ['중앙선 · 차선 침범', 15, 3],
   rampNoStop:    ['경사로 정지구간 미정차', 10, 1],
-  suddenMiss:    ['돌발 급정지 조치 미흡', 10, 1],
+  suddenStop:    ['돌발 시 2초 이내 미정지', 10, 1],
+  suddenHazard:  ['돌발 정지 후 3초 이내 비상점멸등 미작동', 10, 1],
+  accelStop:     ['가속구간 내 정지', 10, 1],
+  parkBrake:     ['직각주차 후 주차 브레이크 미작동', 10, 1],
   parkTimeout:   ['직각주차 시간 초과', 10, 1],
   vibration:     ['심한 진동', 5, 3],
   finishMiss:    ['종료 조작 미이행', 10, 1],
@@ -65,7 +68,8 @@ export const FAILS = {
   crossIdle:    '특별한 사유 없이 교차로 내에서 30초 이상 정차한 때',
   laneOut:      '안전사고를 일으키거나 단 1회라도 차로를 벗어난 때',
   rampSlow:     '경사로 정지구간 이행 후 30초를 초과하여 통과하지 못한 때',
-  rampRoll:     '경사로 정지구간에서 후진하여 앞범퍼가 경사로 사면을 벗어난 때',
+  rampRoll:     '경사로에서 정지 후 출발할 때 1미터 이상 뒤로 밀린 때',
+  startFail:    '시동 걸기에 3회 이상 실패한 때',
   noSeatbelt:   '시험 시작부터 종료까지 좌석안전띠를 착용하지 않은 때',
   signalRun:    '신호 위반 (적색신호에 정지선 통과)',
   timeout:      '시험시간 초과',
@@ -79,7 +83,7 @@ export const FAILS = {
 //   s= 73.8     신호교차로 #1 (좌회전)
 //   s= 95.5~159.5  직각주차 전면 통로
 //   s=177.3     신호교차로 #2 (좌회전)
-//   s=195~225   가속구간
+//   s=193~233   가속구간 (40m)
 //   s=378       종료 지점
 const STAGES = [
   { id: 'start',   name: '출발',               until: 14 },
@@ -87,7 +91,7 @@ const STAGES = [
   { id: 'signal1', name: '신호교차로 (좌회전)', until: 92 },
   { id: 'parking', name: '직각주차',           until: 164 },
   { id: 'signal2', name: '신호교차로 (좌회전)', until: 187 },
-  { id: 'accel',   name: '가속구간',           until: 242 },
+  { id: 'accel',   name: '가속구간',           until: 245 },
   { id: 'finish',  name: '종료',               until: Infinity },
 ];
 
@@ -95,32 +99,60 @@ const STAGE_DEFS = [{ id: 'controls', name: '운전장치 조작' }, ...STAGES];
 
 // 방향지시등을 켜야 하는 지점(진행거리 기준).
 // at 을 지나는 순간의 상태를 본다. from 부터 안내가 뜬다.
+//
+// 교차로에서의 회전과 진로 변경(직각주차 진입 · 본선 복귀)만 넣는다.
+// 구간 사이사이 도로가 굽어지는 곳의 좌·우회전은 방향지시등을 켜지 않으며
+// 켠다고 감점되지도 않으므로, 판정 대상이 아니다.
 const SIGNAL_POINTS = [
   { id: 'start',   side: 'left',  from: 0,   at: 8,   why: '출발' },
   { id: 'cross1',  side: 'left',  from: 52,  at: 71,  why: '신호교차로 좌회전' },
   { id: 'parkIn',  side: 'left',  from: 84,  at: 96,  why: '직각주차 진입' },
   { id: 'parkOut', side: 'right', from: 146, at: 157, why: '본선 복귀' },
   { id: 'cross2',  side: 'left',  from: 160, at: 175, why: '신호교차로 좌회전' },
-  { id: 'corner3', side: 'left',  from: 248, at: 264, why: '좌회전' },
-  { id: 'corner4', side: 'left',  from: 350, at: 368, why: '좌회전' },
   { id: 'finish',  side: 'right', from: 370, at: 376, why: '종료 지점 정차' },
 ];
 
-// 돌발 급정지를 지시할 수 있는 지점(진행거리). 직각주차 구간과 교차로,
-// 경사로 정지구간은 빼고 직선 주행 중에만 나오도록 골랐다.
-const SUDDEN_POINTS = [52, 205, 233, 297, 342];
+// 돌발 급정지를 지시하는 지점(진행거리). 실제 시험에서도 아무 데서나
+// 나오는 것이 아니라 나오는 자리가 대체로 정해져 있다 — 경사로 직전,
+// 경사로를 나와 좌회전한 뒤, 직각주차를 나온 뒤, 가속구간 직전 좌회전
+// 이전, 가속구간 직후. 매 시험마다 이 중 한 곳에서 딱 한 번 나온다.
+const SUDDEN_POINTS = [12, 86, 164, 172, 240];
 
-// 운전장치 조작 지시
-const CONTROL_TASKS = [
-  { key: 'headlightOn', part: 'headlight', say: '전조등을 켜십시오.', done: (u) => u.headlight >= 1 },
-  { key: 'headlightOff', part: 'headlight', say: '전조등을 끄십시오.', done: (u) => u.headlight === 0, follows: 'headlightOn' },
-  { key: 'wiperOn', part: 'wiper', say: '와이퍼를 작동시키십시오.', done: (u) => u.wiper >= 1 },
-  { key: 'wiperOff', part: 'wiper', say: '와이퍼를 정지시키십시오.', done: (u) => u.wiper === 0, follows: 'wiperOn' },
-  { key: 'signalLeft', part: 'turnSignal', say: '좌측 방향지시등을 켜십시오.', done: (u) => u.turnSignal === 'left' },
-  { key: 'signalRight', part: 'turnSignal', say: '우측 방향지시등을 켜십시오.', done: (u) => u.turnSignal === 'right' },
-  { key: 'hazardOn', part: 'hazard', say: '비상점멸등을 켜십시오.', done: (u) => u.hazard },
-  { key: 'hazardOff', part: 'hazard', say: '비상점멸등을 끄십시오.', done: (u) => !u.hazard, follows: 'hazardOn' },
-];
+// 운전장치 조작 지시.
+//
+// 시험관은 기어변속 · 전조등 · 방향지시등 · 와이퍼 네 가지 중 두 가지를
+// 무작위로 지시한다. 하나를 뽑으면 그 장치의 지시가 순서대로 이어진다.
+//   기어변속(자동) : D 또는 N 에 넣었다가 P 로
+//   전조등        : 하향등 점등 → 상향등 전환 → 하향등 복귀 → 소등
+//   방향지시등    : 좌 또는 우(무작위) → 해제
+//   와이퍼        : 작동 → 정지
+const CONTROL_GROUPS = {
+  gear: () => {
+    const first = Math.random() < 0.5 ? 'D' : 'N';
+    return [
+      { part: 'gear', say: `기어를 ${first}(${first === 'D' ? '주행' : '중립'})에 놓으십시오.`, done: (u, v) => v.gear === first },
+      { part: 'gear', say: '기어를 P(주차)에 놓으십시오.', done: (u, v) => v.gear === 'P' },
+    ];
+  },
+  headlight: () => [
+    { part: 'headlight', say: '전조등(하향등)을 켜십시오.', done: (u) => u.headlight === 2 && !u.highBeam },
+    { part: 'headlight', say: '상향등으로 전환하십시오.', done: (u) => u.highBeam },
+    { part: 'headlight', say: '하향등으로 전환하십시오.', done: (u) => u.headlight === 2 && !u.highBeam },
+    { part: 'headlight', say: '전조등을 끄십시오.', done: (u) => u.headlight === 0 },
+  ],
+  turnSignal: () => {
+    const side = Math.random() < 0.5 ? 'left' : 'right';
+    const name = side === 'left' ? '좌측' : '우측';
+    return [
+      { part: 'turnSignal', say: `${name} 방향지시등을 켜십시오.`, done: (u) => u.turnSignal === side },
+      { part: 'turnSignal', say: '방향지시등을 해제하십시오.', done: (u) => u.turnSignal === null },
+    ];
+  },
+  wiper: () => [
+    { part: 'wiper', say: '와이퍼를 작동시키십시오.', done: (u) => u.wiper >= 1 },
+    { part: 'wiper', say: '와이퍼를 정지시키십시오.', done: (u) => u.wiper === 0 },
+  ],
+};
 
 export class Exam {
   constructor(vehicle) {
@@ -162,8 +194,12 @@ export class Exam {
     this.crossIdleTimer = 0;
     this.parkTimer = 0;
     this.parked = false;
+    this.parkInBay = false;
+    this.parkBrakeSet = false;
     this.parkStillTimer = 0;
     this.rampStopped = false;
+    this.rampStillTimer = 0;       // 정지구간에서 멈춰 있은 시간(3초 이상 필요)
+    this.rampStopAxleZ = 0;        // 정지했을 때의 앞바퀴 위치(밀림 판정 기준)
     this.rampWaitTimer = 0;
     this.rampCleared = false;
     this.accelBest = 0;
@@ -175,8 +211,12 @@ export class Exam {
     // 돌발 급정지 — 전 구간 중 한 지점에서 지시한다
     this.suddenAt = SUDDEN_POINTS[Math.floor(Math.random() * SUDDEN_POINTS.length)];
     this.suddenActive = false;
+    this.suddenLamp = false;       // 차내 빨간 경고등
     this.suddenTimer = 0;
-    this.suddenHandled = false;
+    this.suddenStopped = false;
+    this.suddenStopAt = 0;
+    this.suddenHazard = false;
+    this.suddenLampOff = 0;
     this.suddenDone = false;
 
     this._prevThrottle = 0;
@@ -329,6 +369,11 @@ export class Exam {
   }
 
   // ---- 돌발 급정지 (전 구간) ----------------------------------------------
+  //
+  // "돌발! 돌발! 돌발!" 음성과 함께 차내 빨간 경고등이 켜진다.
+  //   · 2초 안에 정지
+  //   · 정지 후 3초 안에 비상점멸등
+  // 두 가지를 따로 본다. 경고등이 꺼지면 비상점멸등을 끄고 다시 출발한다.
   updateSudden(dt, ui) {
     const v = this.v;
     if (this.suddenDone) return;
@@ -338,36 +383,71 @@ export class Exam {
       if (this.progress < this.suddenAt) return;
       if (this.stage === 'parking' || v.speedKmh < 6) return;
       this.suddenActive = true;
+      this.suddenLamp = true;
       this.suddenTimer = 0;
-      this.say('돌발! 즉시 정지하고 비상점멸등을 켜십시오.', 'alert');
-      this.showPart('hazard', '돌발 급정지 · 비상점멸등을 켜십시오', 3, 4);
+      this.say('돌발! 돌발! 돌발!', 'alert');
+      this.showPart('pedals', '돌발 급정지 · 즉시 정지하십시오', 3, 2.5);
+      return;
+    }
+    this.suddenTimer += dt;
+
+    // (1) 2초 이내 정지
+    if (!this.suddenStopped) {
+      this.detail = `돌발 급정지 · ${this.suddenTimer.toFixed(1)}초 (2초 이내 정지)`;
+      if (Math.abs(v.speed) < 0.3) {
+        this.suddenStopped = true;
+        this.suddenStopAt = this.suddenTimer;
+        if (this.suddenTimer > 2.0) this.deduct('suddenStop', `${this.suddenTimer.toFixed(1)}초 소요`);
+        else this.note(`돌발 정지 확인 · ${this.suddenTimer.toFixed(1)}초`, 'ok');
+        this.say('비상점멸등을 켜십시오.');
+      } else if (this.suddenTimer > 5) {
+        this.suddenStopped = true;
+        this.suddenStopAt = this.suddenTimer;
+        this.deduct('suddenStop', '2초 이내 정지 실패');
+      }
       return;
     }
 
-    if (!this.suddenHandled) {
-      this.suddenTimer += dt;
-      this.detail = `돌발 급정지 · ${this.suddenTimer.toFixed(1)}초 경과 (2초 이내 정지 + 비상점멸등)`;
+    // (2) 정지 후 3초 이내 비상점멸등
+    if (!this.suddenHazard) {
+      const since = this.suddenTimer - this.suddenStopAt;
+      this.detail = `정지 완료 · 비상점멸등까지 ${since.toFixed(1)}초 (3초 이내)`;
       if (!ui.hazard) this.showPart('hazard', '비상점멸등을 켜십시오 (H 키)', 3, 1.0);
-      if (Math.abs(v.speed) < 0.3 && ui.hazard) {
-        this.suddenHandled = true;
-        if (this.suddenTimer > 2.0) this.deduct('suddenMiss', `${this.suddenTimer.toFixed(1)}초 소요`);
-        else this.note('돌발 급정지 조치 완료', 'ok');
-        this.say('비상점멸등을 끄고 다시 출발하십시오.');
-      } else if (this.suddenTimer > 6) {
-        this.suddenHandled = true;
-        this.deduct('suddenMiss', '2초 이내 정지 실패');
+      if (ui.hazard) {
+        this.suddenHazard = true;
+        if (since > 3.0) this.deduct('suddenHazard', `${since.toFixed(1)}초 소요`);
+        else this.note(`비상점멸등 확인 · ${since.toFixed(1)}초`, 'ok');
+        this.suddenLampOff = this.suddenTimer + 2.0;
+      } else if (since > 6) {
+        this.suddenHazard = true;
+        this.deduct('suddenHazard', '3초 이내 미작동');
+        this.suddenLampOff = this.suddenTimer + 0.5;
       }
-    } else if (ui.hazard) {
-      this.showPart('hazard', '비상점멸등을 해제하십시오', 2, 1.0);
-    } else {
-      this.suddenActive = false;
-      this.suddenDone = true;
+      return;
     }
+
+    // (3) 경고등이 꺼지면 비상점멸등을 끄고 출발
+    if (this.suddenTimer < this.suddenLampOff) {
+      this.detail = '경고등이 꺼질 때까지 정지 상태를 유지하십시오.';
+      return;
+    }
+    if (this.suddenLamp) {
+      this.suddenLamp = false;
+      this.say('비상점멸등을 끄고 다시 출발하십시오.');
+    }
+    if (ui.hazard) {
+      this.detail = '비상점멸등을 해제하고 출발하십시오.';
+      this.showPart('hazard', '비상점멸등을 해제하십시오', 2, 1.0);
+      return;
+    }
+    this.suddenActive = false;
+    this.suddenDone = true;
   }
 
   // ---- 탑승 및 시동 -------------------------------------------------------
   updateBoarding(dt, ui) {
     const v = this.v;
+    if (v.startFails >= 3) { this.fail('startFail'); return; }
     if (this._boardingStep === 0) {
       this.detail = '안전벨트를 착용하십시오. (B 키)';
       this.showPart('seatbelt', '시험관 지시 · 안전벨트 착용', 3, 1.2);
@@ -399,7 +479,7 @@ export class Exam {
     if (!task) return;
     this.showPart(task.part, '시험관 지시 · ' + task.say, 3, 1.2);
     this.detail = `${this.controlIndex + 1} / ${this.controlQueue.length} · 지시된 장치를 조작하십시오.`;
-    if (task.done(ui)) {
+    if (task.done(ui, this.v)) {
       this.note('조작 확인', 'ok');
       this.controlDelay = 1.1;
     }
@@ -536,26 +616,35 @@ export class Exam {
   stRamp(dt, ui) {
     const v = this.v;
     const axleZ = v.toWorld(FRONT_AXLE, 0)[1];
-    const noseZ = v.toWorld(NOSE, 0)[1];
 
     if (!this.rampStopped) {
+      const inZone = axleZ >= RAMP.stopZ1 && axleZ <= RAMP.stopZ2;
+      const still = inZone && Math.abs(v.speed) < 0.12;
+      // 두 선 사이에 3초 이상 멈춰 있어야 정차로 인정된다.
+      this.rampStillTimer = still ? this.rampStillTimer + dt : 0;
       const dist = RAMP.stopZ1 - axleZ;
-      this.detail = dist > 0.2
-        ? `경사로 · 정지구간까지 ${dist.toFixed(1)}m · 노란 표지 사이에 앞바퀴를 세우십시오`
-        : '경사로 · 정지구간 안입니다. 정지하십시오';
-      if (axleZ >= RAMP.stopZ1 && axleZ <= RAMP.stopZ2 && Math.abs(v.speed) < 0.12) {
+      if (still) {
+        this.detail = `경사로 정지구간 · 정차 ${this.rampStillTimer.toFixed(1)}초 (3초 이상)`;
+      } else {
+        this.detail = dist > 0.2
+          ? `경사로 · 정지구간까지 ${dist.toFixed(1)}m · 노란 표지 사이에 앞바퀴를 세우십시오`
+          : '경사로 · 정지구간 안입니다. 정지하십시오';
+      }
+      if (this.rampStillTimer >= 3.0) {
         this.rampStopped = true;
+        this.rampStopAxleZ = axleZ;
         this.rampWaitTimer = 0;
-        this.note('정지구간 정차 확인', 'ok');
-        this.say('30초 이내에 출발하십시오. 뒤로 밀려 앞범퍼가 사면을 벗어나면 실격입니다.');
+        this.note('정지구간 3초 정차 확인', 'ok');
+        this.say('30초 이내에 출발하십시오. 1미터 이상 뒤로 밀리면 실격입니다.');
       }
     } else if (!this.rampCleared) {
       this.rampWaitTimer += dt;
       this.detail = `경사로 출발 · 남은 시간 ${Math.max(0, 30 - this.rampWaitTimer).toFixed(0)}초`;
-      // (5) 앞범퍼가 경사로 사면을 벗어난 때 → 실격
-      if (noseZ < RAMP.upStart) { this.fail('rampRoll'); return; }
-      if (noseZ < RAMP.upStart + 2.0) {
-        this.detail = `뒤로 밀리고 있습니다! 앞범퍼가 사면 끝까지 ${(noseZ - RAMP.upStart).toFixed(1)}m`;
+      // 정지한 자리에서 1미터 이상 뒤로 밀리면 실격
+      const rolled = this.rampStopAxleZ - axleZ;
+      if (rolled > 1.0) { this.fail('rampRoll'); return; }
+      if (rolled > 0.2) {
+        this.detail = `뒤로 밀리고 있습니다! ${rolled.toFixed(2)}m (1m 이상이면 실격)`;
         this.showPart('pedals', '브레이크를 밟고 다시 출발하십시오', 2, 0.8);
       }
       // (5) 정지구간 이행 후 30초 초과 → 실격
@@ -591,7 +680,8 @@ export class Exam {
     }
   }
 
-  // 직각주차 — 배정된 구획(P1 · P2 · P3)에 후진으로 진입한다.
+  // 직각주차 — 배정된 구획(P1 · P2 · P3)에 후진으로 진입한 뒤,
+  // 주차 브레이크를 올렸다 내리고 다시 빠져나온다.
   stParking(dt, ui) {
     const v = this.v;
     const bay = this.bay;
@@ -605,24 +695,51 @@ export class Exam {
     const inBay = v.wheelPoints().every(([x, z]) =>
       x > bay.x1 + 0.05 && x < bay.x2 - 0.05 && z > bay.z1 + 0.05 && z < bay.z2 - 0.05);
     const left = Math.max(0, 120 - this.parkTimer);
-    this.detail = `직각주차 ${bay.name} · 남은 시간 ${left.toFixed(0)}초 · 후진(R)으로 주차구획에 진입`;
-
-    if (v.gear !== 'R' && v.z < CL.south - HALF && Math.abs(v.speed) < 0.3 && !inBay) {
-      this.showPart('gear', `기어를 R(후진)에 놓고 ${bay.name} 구획으로 후진하십시오`, 2, 1.0);
-    }
     if (this.parkTimer > 120) this.deduct('parkTimeout');
 
-    if (inBay && Math.abs(v.speed) < 0.15) {
-      this.parkStillTimer += dt;
-      if (this.parkStillTimer > 1.0) {
-        this.parked = true;
-        this.note(`${bay.name} 주차 완료`, 'ok');
-        this.say('주차되었습니다. 전진하여 출차한 뒤 계속 진행하십시오.');
-        this.showPart('gear', '기어를 D(주행)로 변속하고 출차하십시오', 3, 3);
+    // (1) 네 바퀴가 모두 구획 안에 들어간 채 정지
+    if (!this.parkInBay) {
+      this.detail = `직각주차 ${bay.name} · 남은 시간 ${left.toFixed(0)}초 · 후진(R)으로 주차구획에 진입`;
+      if (v.gear !== 'R' && v.z < CL.south - HALF && Math.abs(v.speed) < 0.3 && !inBay) {
+        this.showPart('gear', `기어를 R(후진)에 놓고 ${bay.name} 구획으로 후진하십시오`, 2, 1.0);
       }
-    } else {
-      this.parkStillTimer = 0;
+      if (inBay && Math.abs(v.speed) < 0.15) {
+        this.parkStillTimer += dt;
+        if (this.parkStillTimer > 1.0) {
+          this.parkInBay = true;
+          this.note(`${bay.name} 구획 진입 확인`, 'ok');
+          this.say('주차 브레이크를 체결했다가 해제하십시오.');
+        }
+      } else {
+        this.parkStillTimer = 0;
+      }
+      return;
     }
+
+    // (2) 주차 브레이크를 올렸다 내린다
+    if (!this.parkBrakeSet) {
+      this.detail = `직각주차 ${bay.name} · 주차 브레이크를 체결하십시오 (Space)`;
+      this.showPart('parkingBrake', '주차 브레이크를 체결하십시오', 3, 1.0);
+      if (v.parkingBrake) {
+        this.parkBrakeSet = true;
+        this.note('주차 브레이크 체결 확인', 'ok');
+      } else if (!inBay) {
+        // 브레이크를 걸지 않고 그냥 나가 버린 경우
+        this.deduct('parkBrake');
+        this.parked = true;
+      }
+      return;
+    }
+
+    this.detail = `직각주차 ${bay.name} · 주차 브레이크를 해제하고 출차하십시오`;
+    if (v.parkingBrake) {
+      this.showPart('parkingBrake', '주차 브레이크를 해제하십시오', 3, 1.0);
+      return;
+    }
+    this.parked = true;
+    this.note('직각주차 완료', 'ok');
+    this.say('주차되었습니다. 전진하여 출차한 뒤 계속 진행하십시오.');
+    this.showPart('gear', '기어를 D(주행)로 변속하고 출차하십시오', 3, 3);
   }
 
   // 가속구간 (동측 변, 진행 방향 -Z).
@@ -634,7 +751,9 @@ export class Exam {
       Math.abs(v.x - CL.east) < HALF + 1;
     if (inZone) {
       this.accelBest = Math.max(this.accelBest, v.speedKmh);
-      this.detail = `가속구간 · 현재 ${v.speedKmh.toFixed(0)}km/h · 최고 ${this.accelBest.toFixed(0)}km/h (20km/h 이상 필요)`;
+      // 감속하다가 구간 안에서 멈춰 버리면 감점이다.
+      if (Math.abs(v.speed) < 0.2) this.deduct('accelStop');
+      this.detail = `가속구간 40m · 현재 ${v.speedKmh.toFixed(0)}km/h · 최고 ${this.accelBest.toFixed(0)}km/h (20km/h 이상 필요)`;
     } else if (v.z > POINT.accelZ1) {
       this.detail = `가속구간까지 ${(v.z - POINT.accelZ1).toFixed(0)}m · 20km/h 이상으로 통과하십시오`;
     } else {
@@ -686,23 +805,11 @@ export class Exam {
 }
 
 function buildControlQueue() {
-  // 점등 지시 3개를 무작위로 뽑고, 각각에 해제 지시가 있으면 뒤에 붙인다.
-  const pool = CONTROL_TASKS.filter((t) => !t.follows);
+  // 네 가지 장치 중 두 가지를 뽑는다.
+  const names = Object.keys(CONTROL_GROUPS);
   const picked = [];
-  for (let i = 0; i < 3 && pool.length; i++) {
-    picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  for (let i = 0; i < 2 && names.length; i++) {
+    picked.push(names.splice(Math.floor(Math.random() * names.length), 1)[0]);
   }
-  const queue = [];
-  for (const t of picked) {
-    queue.push({ ...t });
-    const off = CONTROL_TASKS.find((o) => o.follows === t.key);
-    if (off) queue.push({ ...off });
-  }
-  if (picked.some((t) => t.key.startsWith('signal'))) {
-    queue.push({
-      key: 'signalOff', part: 'turnSignal', say: '방향지시등을 해제하십시오.',
-      done: (u) => u.turnSignal === null,
-    });
-  }
-  return queue;
+  return picked.flatMap((n) => CONTROL_GROUPS[n]());
 }

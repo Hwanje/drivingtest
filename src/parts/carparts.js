@@ -231,27 +231,31 @@ function partHeadlight() {
     marks.push(n);
   }
 
-  let dial = 0;
+  let dial = 0, push = 0;
   return {
     id: 'headlight',
     title: '전조등 스위치',
-    subtitle: '좌측 레버 끝 다이얼 · OFF → 미등 → 전조등',
+    subtitle: '다이얼 2칸 올리면 하향등 · 레버를 앞으로 밀면 상향등',
     camera: { eye: [0.10, 0.17, 0.34], target: [-0.17, 0.01, -0.07], fov: 40 },
     root,
     update(state, dt) {
       dial = approach(dial, state.headlight * 0.9, dt * 3.2);
+      // 상향등은 레버를 앞으로(운전자 반대쪽으로) 민 상태다.
+      push = approach(push, state.highBeam ? 0.035 : 0, dt * 0.5);
+      left.matrix = M4.translate(0, 0, -push);
       left.find('knob').matrix = M4.multiply(M4.translate(0, 0.128, 0), M4.rotY(dial));
       marks.forEach((n, i) => {
         const lit = i === state.headlight;
         n.mesh.faces.forEach((f) => {
-          f.color = lit ? (i === 2 ? C.blue : C.green) : C.midPlastic;
+          f.color = lit ? (i === 2 ? (state.highBeam ? C.blue : C.green) : C.green) : C.midPlastic;
           f.unlit = lit;
         });
       });
     },
     status(state) {
+      if (state.highBeam) return { text: '상향등', tone: 'blue' };
       return {
-        text: ['OFF', '미등 (차폭등)', '전조등 (하향등)'][state.headlight] || 'OFF',
+        text: ['OFF', '미등 (차폭등)', '하향등'][state.headlight] || 'OFF',
         tone: state.headlight > 0 ? 'green' : 'off',
       };
     },

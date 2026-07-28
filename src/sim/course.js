@@ -76,8 +76,8 @@ export const POINT = {
   // 신호교차로 두 곳. 둘 다 좌회전이다.
   cross1: { x: CL.west, z: CL.south, stopZ: CL.south - HALF - 2.0 },
   cross2: { x: CL.east, z: CL.south, stopX: CL.east - HALF - 2.0 },
-  // 가속구간 (동측 변, 진행 방향 -Z)
-  accelZ1: 70, accelZ2: 40,
+  // 가속구간 (동측 변, 진행 방향 -Z). 약 40m.
+  accelZ1: 72, accelZ2: 32,
 };
 
 const COL = {

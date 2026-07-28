@@ -40,7 +40,7 @@ const hud = new Hud({
   tell: {
     seatbelt: $('#tt-seatbelt'), brake: $('#tt-brake'), engine: $('#tt-engine'),
     left: $('#tt-left'), right: $('#tt-right'), hazard: $('#tt-hazard'),
-    head: $('#tt-head'), wiper: $('#tt-wiper'),
+    head: $('#tt-head'), wiper: $('#tt-wiper'), sudden: $('#tt-sudden'),
   },
 });
 
@@ -50,7 +50,8 @@ const ui = {
   blinkOn: false,
   hazard: false,
   wiper: 0,               // 0 OFF, 1 INT, 2 LO, 3 HI
-  headlight: 0,           // 0 OFF, 1 미등, 2 전조등
+  headlight: 0,           // 0 OFF, 1 미등, 2 하향등
+  highBeam: false,        // 상향등 (하향등 상태에서 레버를 앞으로 밀면 켜진다)
   ignitionPressed: false,
 };
 
@@ -92,7 +93,21 @@ input.on('z', () => {
 
 input.on('x', () => {
   ui.headlight = (ui.headlight + 1) % 3;
-  viewer.request('headlight', `전조등 ${['소등', '미등', '전조등'][ui.headlight]}`,
+  if (ui.headlight < 2) ui.highBeam = false;   // 하향등이 아니면 상향등은 꺼진다
+  viewer.request('headlight', `전조등 ${['소등', '미등', '하향등'][ui.headlight]}`,
+    { priority: 1, hold: 2.8 });
+  sound.ensure();
+});
+
+// 상향등. 실차는 방향지시등 레버를 앞으로 밀어 전환하며,
+// 하향등이 켜져 있을 때만 들어온다.
+input.on('v', () => {
+  if (ui.headlight < 2) {
+    toast('하향등을 먼저 켜야 상향등으로 전환할 수 있습니다.');
+    return;
+  }
+  ui.highBeam = !ui.highBeam;
+  viewer.request('headlight', ui.highBeam ? '상향등 전환' : '하향등 복귀',
     { priority: 1, hold: 2.8 });
   sound.ensure();
 });
@@ -300,14 +315,15 @@ function frame(now) {
       lamp.node.mesh.faces.forEach((f) => { f.color = on ? lamp.on : lamp.off; f.unlit = on; });
     }
   }
-  const suddenOn = exam.suddenActive && !exam.suddenHandled && Math.floor(exam.elapsed * 4) % 2 === 0;
+  const suddenOn = exam.suddenLamp && Math.floor(exam.elapsed * 4) % 2 === 0;
   course.suddenFace.faces.forEach((f) => { f.color = suddenOn ? [235, 60, 48] : [70, 24, 22]; });
 
   // ---- 차량 · 부품 표시 ----
   car.update(vehicle, ui, dt);
   const partState = {
     turnSignal: ui.turnSignal, blinkOn: ui.blinkOn, hazard: ui.hazard,
-    wiper: ui.wiper, headlight: ui.headlight, ignitionPressed: ui.ignitionPressed,
+    wiper: ui.wiper, headlight: ui.headlight, highBeam: ui.highBeam,
+    ignitionPressed: ui.ignitionPressed,
     gear: vehicle.gear, parkingBrake: vehicle.parkingBrake, seatbelt: vehicle.seatbelt,
     engineOn: vehicle.engineOn, steerAngle: vehicle.steer, handAngle: vehicle.handAngle,
     throttle: vehicle.throttle, brake: vehicle.brake,

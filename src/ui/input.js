@@ -74,7 +74,7 @@ function axis(cur, pressed, dt) {
 
 const HANDLED = new Set([
   'up', 'down', 'left', 'right', 'space', 'tab', 'enter',
-  'w', 'a', 's', 'd', 'q', 'e', 'z', 'x', 'h', 'b', 'c', 'r', 'p',
+  'w', 'a', 's', 'd', 'q', 'e', 'z', 'x', 'v', 'h', 'b', 'c', 'r', 'p',
   '1', '2', '3', '4',
 ]);
 

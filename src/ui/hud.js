@@ -155,6 +155,8 @@ export class Hud {
     set('right', (ui.turnSignal === 'right' || ui.hazard) && ui.blinkOn);
     set('hazard', ui.hazard && ui.blinkOn);
     set('head', ui.headlight > 0);
+    // 돌발 경고등 — 실차의 차내 빨간 신호등
+    set('sudden', exam && exam.suddenLamp);
     set('wiper', ui.wiper > 0);
   }
 

@@ -66,6 +66,7 @@ export class Vehicle {
     this.seatbelt = false;
     this.rpm = 0;
     this.odometer = 0;
+    this.startFails = 0;         // 시동 걸기 실패 횟수(3회 이상이면 실격)
     this.lateralJerk = 0;
     this.longAccel = 0;
     this.pitch = 0;
@@ -244,9 +245,16 @@ export class Vehicle {
 
   // 시동 시도. 조건을 만족하지 못하면 사유를 돌려준다.
   tryStart() {
+    // 이미 걸려 있는데 또 누른 것은 시도로 세지 않는다.
     if (this.engineOn) return { ok: false, reason: '이미 시동이 걸려 있습니다.' };
-    if (this.gear !== 'P' && this.gear !== 'N') return { ok: false, reason: '기어를 P 또는 N에 놓아야 시동이 걸립니다.' };
-    if (this.brake < 0.4) return { ok: false, reason: '브레이크를 밟은 상태에서 시동을 걸어야 합니다.' };
+    if (this.gear !== 'P' && this.gear !== 'N') {
+      this.startFails += 1;
+      return { ok: false, reason: '기어를 P 또는 N에 놓아야 시동이 걸립니다.' };
+    }
+    if (this.brake < 0.4) {
+      this.startFails += 1;
+      return { ok: false, reason: '브레이크를 밟은 상태에서 시동을 걸어야 합니다.' };
+    }
     this.engineOn = true;
     this.rpm = 900;
     return { ok: true };

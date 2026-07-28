@@ -113,6 +113,7 @@ html, body {
   transition: color .08s, background .08s;
 }
 .tt.on { color: #0c1017; background: var(--warn); border-color: rgba(255,255,255,.3); }
+#tt-sudden.on { background: #e24a3c; color: #fff; }
 #tt-left.on, #tt-right.on, #tt-hazard.on { background: #ffa828; }
 #tt-seatbelt.on, #tt-brake.on, #tt-engine.on { background: var(--bad); color: #fff; }
 #tt-head.on, #tt-wiper.on { background: var(--ok); color: #06180e; }
