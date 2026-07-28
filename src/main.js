@@ -3,7 +3,7 @@
 import { Renderer3D } from './gfx/renderer.js';
 import { M4, wrapAngle } from './gfx/math.js';
 import { Node } from './gfx/mesh.js';
-import { buildCourse, LANE_C, POINT } from './sim/course.js';
+import { buildCourse, POINT } from './sim/course.js';
 import { Vehicle } from './sim/vehicle.js';
 import { buildCar, EYE } from './sim/carmodel.js';
 import { Exam, PASS_SCORE, TIME_LIMIT } from './sim/exam.js';
@@ -219,7 +219,8 @@ function toast(text, tone = 'info') {
 // ---------------------------------------------------------------- 재시작
 
 function restart() {
-  vehicle.reset(POINT.startX, LANE_C, 0);
+  // 출발 지점은 좌측 상단 두 칸 중 동쪽 칸. 남쪽(+Z)을 향한다.
+  vehicle.reset(POINT.startX, POINT.startZ, Math.PI / 2);
   exam.reset();
   ui.turnSignal = null;
   ui.hazard = false;
@@ -290,10 +291,12 @@ function frame(now) {
   }
   if (!before.failed && exam.phase === 'done') showResult();
 
-  // ---- 신호등 · 돌발 표지판 ----
-  for (const [name, lamp] of Object.entries(course.lamps)) {
-    const on = exam.signalPhase === name;
-    lamp.node.mesh.faces.forEach((f) => { f.color = on ? lamp.on : lamp.off; f.unlit = on; });
+  // ---- 신호등(두 곳) · 돌발 표지판 ----
+  for (const set of [course.lamps, course.lamps2]) {
+    for (const [name, lamp] of Object.entries(set)) {
+      const on = exam.signalPhase === name;
+      lamp.node.mesh.faces.forEach((f) => { f.color = on ? lamp.on : lamp.off; f.unlit = on; });
+    }
   }
   const suddenOn = exam.suddenActive && !exam.suddenHandled && Math.floor(exam.elapsed * 4) % 2 === 0;
   course.suddenFace.faces.forEach((f) => { f.color = suddenOn ? [235, 60, 48] : [70, 24, 22]; });

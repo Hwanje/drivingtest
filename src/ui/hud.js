@@ -1,8 +1,8 @@
 // 계기판 · 미니맵 · 전면 유리 효과(와이퍼/빗방울) 렌더링.
 
-import { RECTS, ROUTE, PARKING_BAY, RAMP, CL, ROAD, HALF } from '../sim/course.js';
+import { RECTS, ROUTE, BAYS, RAMP, CL, ROAD, HALF } from '../sim/course.js';
 
-const MAP_BOUNDS = { x1: -22, x2: 94, z1: -13, z2: 56 };
+const MAP_BOUNDS = { x1: -16, x2: 116, z1: -9, z2: 103 };
 
 export class Hud {
   constructor(els) {
@@ -187,12 +187,16 @@ export class Hud {
       ctx.strokeRect(X(r.x1), Z(r.z1), (r.x2 - r.x1) * s, (r.z2 - r.z1) * s);
     }
 
-    // 주차 구획 · 경사로 정지구간 강조
+    // 주차 구획(배정된 곳만 진하게) · 경사로 정지구간 강조
+    const assigned = (exam && exam.bay) || BAYS[1];
+    for (const b of BAYS) {
+      ctx.strokeStyle = b.id === assigned.id ? '#e2b33c' : 'rgba(226,179,60,0.35)';
+      ctx.lineWidth = b.id === assigned.id ? 1.8 : 1;
+      ctx.strokeRect(X(b.x1), Z(b.z1), (b.x2 - b.x1) * s, (b.z2 - b.z1) * s);
+    }
     ctx.strokeStyle = '#e2b33c';
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(X(PARKING_BAY.x1), Z(PARKING_BAY.z1),
-      (PARKING_BAY.x2 - PARKING_BAY.x1) * s, (PARKING_BAY.z2 - PARKING_BAY.z1) * s);
-    ctx.strokeRect(X(CL.legB - HALF), Z(RAMP.stopZ1), ROAD * s, (RAMP.stopZ2 - RAMP.stopZ1) * s);
+    ctx.strokeRect(X(CL.west - HALF), Z(RAMP.stopZ1), ROAD * s, (RAMP.stopZ2 - RAMP.stopZ1) * s);
 
     // 주행 경로
     ctx.beginPath();
