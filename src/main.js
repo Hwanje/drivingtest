@@ -1,7 +1,7 @@
 // 대한민국 운전면허 장내기능시험 연습 프로그램 - 진입점.
 
 import { Renderer3D } from './gfx/renderer.js';
-import { M4, wrapAngle } from './gfx/math.js';
+import { M4, wrapAngle, clamp, approach } from './gfx/math.js';
 import { Node } from './gfx/mesh.js';
 import { buildCourse, POINT } from './sim/course.js';
 import { Vehicle } from './sim/vehicle.js';
@@ -59,6 +59,8 @@ let signalStartHeading = 0;
 let cameraMode = 'interior';   // interior | chase | top
 let camEye = [-16, 4, 0];
 let camTarget = [0, 1, 0];
+let camUp = [0, 1, 0];
+let gazeYaw = 0;             // 고개를 돌린 각도(코너 안쪽을 본다)
 let paused = false;
 let lastWiperSweep = 0;
 
@@ -307,7 +309,7 @@ function frame(now) {
     turnSignal: ui.turnSignal, blinkOn: ui.blinkOn, hazard: ui.hazard,
     wiper: ui.wiper, headlight: ui.headlight, ignitionPressed: ui.ignitionPressed,
     gear: vehicle.gear, parkingBrake: vehicle.parkingBrake, seatbelt: vehicle.seatbelt,
-    engineOn: vehicle.engineOn, steerAngle: vehicle.steer,
+    engineOn: vehicle.engineOn, steerAngle: vehicle.steer, handAngle: vehicle.handAngle,
     throttle: vehicle.throttle, brake: vehicle.brake,
   };
   viewer.update(partState, dt);
@@ -320,8 +322,11 @@ function frame(now) {
   renderer.render(world, {
     eye: camEye,
     target: camTarget,
-    up: cameraMode === 'top' ? [0, 0, -1] : [0, 1, 0],
-    fov: cameraMode === 'top' ? 46 : 62,
+    up: cameraMode === 'top' ? [0, 0, -1] : (cameraMode === 'interior' ? camUp : [0, 1, 0]),
+    // 운전석 시점의 시야각. 세로 52도는 이 화면 비율에서 가로 약 64도로,
+    // 모니터를 보는 거리에서 사람이 실제로 보는 것과 비슷한 배율이 된다.
+    // 넓게 잡으면 원근이 과장돼 거리감이 실제보다 멀게 느껴진다.
+    fov: cameraMode === 'top' ? 46 : (cameraMode === 'interior' ? 52 : 62),
     near: 0.12,
   });
 
@@ -352,9 +357,28 @@ function updateCamera(dt) {
   if (cameraMode === 'interior') {
     // 1톤 화물차 운전자 눈높이(노면에서 1.62m). 캡오버형이라 시야가 승용차보다 높다.
     camEye = M4.xformPoint(carM, EYE);
-    // 시선을 약 6도 아래로 둔다. 눈과 지붕 사이가 30cm 밖에 안 되는 캡오버라
-    // 수평으로 보면 화면 위쪽 1/4 이 천장으로 차 버린다.
-    camTarget = M4.xformPoint(carM, [EYE[0] + 16, EYE[1] - 1.72, EYE[2]]);
+
+    // 시선 — 사람은 정면을 멍하니 보는 게 아니라 "가려는 지점"을 본다.
+    //
+    // 주시점까지의 거리는 속도에 따라 달라진다. 서 있을 때는 코앞을,
+    // 속도가 붙으면 멀리 본다. 그 지점을 내려다보는 각도가 곧 시선의
+    // 내림각이 되므로, 천천히 갈수록 자연스럽게 노면 가까이를 보게 된다.
+    const aim = 9 + Math.abs(v.speed) * 1.4;
+    const drop = Math.atan2(EYE[1], aim);
+
+    // 코너에서는 고개를 돌려 돌아 들어갈 쪽을 본다. 실제 운전자도
+    // 핸들을 감기 전에 시선이 먼저 그쪽으로 간다.
+    gazeYaw = approach(gazeYaw, clamp(v.steer * 0.5, -0.26, 0.26), dt * 2.4);
+
+    const L = 16;
+    camTarget = M4.xformPoint(carM, [
+      EYE[0] + L * Math.cos(gazeYaw),
+      EYE[1] - L * Math.tan(drop),
+      EYE[2] + L * Math.sin(gazeYaw),
+    ]);
+    // 머리는 차체와 함께 기운다. 차가 롤하면 지평선도 같이 기울어야 한다.
+    const upPt = M4.xformPoint(carM, [EYE[0], EYE[1] + 1, EYE[2]]);
+    camUp = [upPt[0] - camEye[0], upPt[1] - camEye[1], upPt[2] - camEye[2]];
   } else if (cameraMode === 'chase') {
     const want = M4.xformPoint(M4.chain(M4.translate(v.x, v.y, v.z), M4.rotY(-v.heading)),
       [-9.2, 3.3, 0]);

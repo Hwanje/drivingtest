@@ -538,19 +538,20 @@ function partSteering() {
   return {
     id: 'steering',
     title: '스티어링 휠',
-    subtitle: '조향 각도 표시',
+    subtitle: '조향비 18:1 · 락투락 약 3.6회전',
     camera: { eye: [0.06, 0.18, 0.62], target: [0, 0.0, 0], fov: 44 },
     root,
     update(state) {
-      // 실제 스티어링은 조향각의 약 8배까지 돌아간다.
-      wheel.matrix = M4.multiply(M4.translate(0, 0, 0.06), M4.rotZ(-state.steerAngle * 8));
+      // 핸들 각도 = 앞바퀴 조향각 × 조향비. 앞바퀴가 최대 36도 꺾일 때
+      // 핸들은 한쪽으로 648도(1.8회전) 돌아간다.
+      wheel.matrix = M4.multiply(M4.translate(0, 0, 0.06), M4.rotZ(-state.handAngle));
     },
     status(state) {
-      const deg = Math.round(-state.steerAngle * 8 * 180 / Math.PI);
-      return {
-        text: deg === 0 ? '중립' : `${deg > 0 ? '좌' : '우'} ${Math.abs(deg)}°`,
-        tone: 'off',
-      };
+      const deg = -state.handAngle * 180 / Math.PI;
+      const abs = Math.round(Math.abs(deg));
+      if (abs < 3) return { text: '중립', tone: 'off' };
+      const turns = (Math.abs(deg) / 360).toFixed(1);
+      return { text: `${deg > 0 ? '좌' : '우'} ${abs}° · ${turns}회전`, tone: 'off' };
     },
   };
 }

@@ -23,6 +23,14 @@ export const SPEC = {
   trackHalf: 0.735,    // 윤거 약 1.47m
   wheelRadius: 0.34,
   maxSteer: 0.63,      // rad (약 36도) · 최소회전반경 약 5.1m
+
+  // 조향계. 핸들을 돌린 각도와 앞바퀴가 꺾이는 각도의 비가 조향비다.
+  // 앞바퀴 최대 36도 × 조향비 18 = 한쪽으로 648도, 락투락 약 3.6 회전으로
+  // 1톤 화물차 실차와 같다. 승용차(2.5~3 회전)보다 많이 돌려야 한다.
+  steerRatio: 18,
+  // 사람이 핸들을 돌릴 수 있는 속도의 상한(rad/s). 약 550도/초로,
+  // 두 손으로 부지런히 돌리면 락투락을 2.4초에 감는 정도다.
+  handRate: 9.6,
   driveForce: 6400,    // N
   power: 60000,        // W
   brakeForce: 13500,   // N
@@ -70,6 +78,11 @@ export class Vehicle {
 
   get speedKmh() { return Math.abs(this.speed) * 3.6; }
 
+  // 핸들이 돌아간 각도(rad, + 가 우측). 앞바퀴 각도 × 조향비.
+  get handAngle() { return this.steer * SPEC.steerRatio; }
+  // 핸들 회전수(중립 기준). 락투락 3.6 회전이므로 한쪽으로 최대 1.8.
+  get handTurns() { return this.handAngle / (Math.PI * 2); }
+
   // 진행 방향 단위 벡터(월드 XZ)
   forward() { return [Math.cos(this.heading), Math.sin(this.heading)]; }
 
@@ -115,15 +128,20 @@ export class Vehicle {
     this.brake = clamp(input.brake, 0, 1);
     this.steerInput = clamp(input.steer, -1, 1);
 
-    // 조향은 즉시 꺾이지 않는다. 속도가 높을수록 조금 느리게 반응한다.
-    const rate = 2.6 / (1 + Math.abs(this.speed) * 0.06);
+    // 조향. 한계는 앞바퀴가 아니라 "손"에 있다. 핸들을 돌릴 수 있는 최고
+    // 속도(handRate)를 조향비로 나눠 앞바퀴 각속도 상한으로 쓴다. 속도가
+    // 붙으면 노면 반력이 커져 조금 느려진다.
+    const handRate = s.handRate / (1 + Math.abs(this.speed) * 0.05);
+    const roadRate = handRate / s.steerRatio;
     const targetSteer = this.steerInput * s.maxSteer;
     if (Math.abs(this.steerInput) < 0.02) {
-      // 손을 떼면 셀프 얼라이닝으로 서서히 중립 복귀
-      const back = (0.8 + Math.abs(this.speed) * 0.45) * dt;
-      this.steer = approach(this.steer, 0, back);
+      // 손을 놓으면 셀프 얼라이닝 토크로 되돌아온다. 복원력은 속도에 비례해서,
+      // 서 있을 때는 타이어가 노면에 붙잡혀 거의 제자리에 머문다 — 실제로도
+      // 정차 중에는 핸들을 손으로 풀어 줘야 한다.
+      const back = 0.10 + Math.abs(this.speed) * 0.15;
+      this.steer = approach(this.steer, 0, Math.min(back, roadRate) * dt);
     } else {
-      this.steer = approach(this.steer, targetSteer, rate * dt);
+      this.steer = approach(this.steer, targetSteer, roadRate * dt);
     }
 
     // ---- 종방향 힘 --------------------------------------------------------

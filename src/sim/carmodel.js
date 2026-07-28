@@ -280,6 +280,21 @@ function buildCockpit() {
     m.merge(box(0.09, ROOF_Y - 0.30, 0.05, [70, 73, 80]),
       M4.translate(CAB_BACK + 0.06, (ROOF_Y + 0.30) / 2, zz - 0.03 * sgn));
   }
+  // 사이드미러. 운전석에서 창밖으로 실제로 보이는 물건이라 실내에도 세운다.
+  //
+  // 거울면 340×160mm 를 도어 앞쪽(눈에서 약 1.4m)에 다는 실차 배치다.
+  // 눈에서 약 33도 옆이라 정면을 볼 때는 화면 가장자리 밖에 있고, 코너에서
+  // 고개를 돌리면 그제서야 시야로 들어온다. 이것도 실차와 같다.
+  // 거울면은 하늘과 노면을 비추므로 밝은 색으로 둔다. 어둡게 칠하면
+  // 창밖에 검은 판때기가 붙어 있는 것처럼 보인다.
+  for (const sgn of [-1, 1]) {
+    const zz = (SPEC.width / 2 + 0.33) * sgn;
+    m.merge(box(0.05, 0.05, 0.30, [78, 81, 88]),
+      M4.translate(2.04, 1.42, (SPEC.width / 2 + 0.18) * sgn));
+    m.merge(box(0.07, 0.34, 0.16, [62, 65, 72]), M4.translate(2.02, 1.30, zz));
+    m.merge(box(0.02, 0.30, 0.13, [150, 168, 186]), M4.translate(1.98, 1.30, zz));
+  }
+
   // 뒷벽 · 바닥
   m.addPoly([P(CAB_BACK, 0.30, -Wi), P(CAB_BACK, 0.30, Wi),
     P(CAB_BACK, ROOF_Y, Wi), P(CAB_BACK, ROOF_Y, -Wi)], [48, 50, 56]);
@@ -329,7 +344,9 @@ function buildCockpit() {
   return {
     node,
     update(v, ui, dt) {
-      wheelNode.matrix = M4.rotZ(-v.steer * 7);
+      // 핸들은 앞바퀴 각도의 조향비(18배)만큼 돌아간다. 코너 하나에
+      // 한 바퀴 가까이 감아야 하는 실차 감각이 그대로 보인다.
+      wheelNode.matrix = M4.rotZ(-v.handAngle);
       const sigTarget = ui.turnSignal === 'left' ? 0.26 : ui.turnSignal === 'right' ? -0.26 : 0;
       sigAngle += (sigTarget - sigAngle) * Math.min(1, dt * 8);
       wipAngle += (((ui.wiper || 0) * -0.09) - wipAngle) * Math.min(1, dt * 8);
