@@ -2,7 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b1017">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
 <title>운전면허 장내기능시험 연습</title>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -65,6 +70,9 @@
       <p class="reason" data-role="reason"></p>
       <p class="hint">Tab: 다른 부품 보기 · Esc: 자동으로 되돌리기</p>
     </section>
+
+    <!-- 터치 조작(모바일) -->
+    <div id="touch"></div>
 
     <div id="toasts"></div>
 
@@ -144,6 +152,8 @@
     </p>
   </aside>
 </div>
+
+<div id="rotate-hint"><div>가로로 돌려 주세요</div></div>
 
 <!-- 도움말 -->
 <div id="help" class="hidden">

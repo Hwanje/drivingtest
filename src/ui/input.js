@@ -14,6 +14,11 @@ export class Input {
     this.actions = new Map();
     this._pending = [];
 
+    // 터치 조작이 잡고 있는 아날로그 값. null 이면 키보드 입력을 쓴다.
+    // 차량 모델은 이 값을 "목표"로만 받고 조향 속도·구동력은 스스로 제한하므로,
+    // 여기에 값을 넣어도 물리 거동은 달라지지 않는다.
+    this.analog = { steer: null, throttle: null, brake: null };
+
     target.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       const k = normalize(e);
@@ -37,12 +42,18 @@ export class Input {
     this._pending.push(key);
   }
 
-  update(dt) {
+  // 눌린 키/버튼에 걸린 동작만 실행한다. 일시정지 중에도 이건 돌아야
+  // 일시정지를 다시 풀 수 있다.
+  flush() {
     for (const k of this._pending) {
       const fns = this.actions.get(k);
       if (fns) for (const fn of fns) fn();
     }
     this._pending.length = 0;
+  }
+
+  update(dt) {
+    this.flush();
 
     const up = this.keys.has('up') || this.keys.has('w');
     const down = this.keys.has('down') || this.keys.has('s');
@@ -61,6 +72,12 @@ export class Input {
     } else {
       this.steer += (steerTarget - this.steer) * Math.min(1, dt * 4.2);
     }
+
+    // 터치 조작 중이면 그 값이 이긴다. 손을 떼면 다시 키보드 값으로 돌아간다.
+    const a = this.analog;
+    if (a.steer !== null) this.steer = a.steer;
+    if (a.throttle !== null) this.throttle = Math.max(this.throttle, a.throttle);
+    if (a.brake !== null) this.brake = Math.max(this.brake, a.brake);
   }
 }
 

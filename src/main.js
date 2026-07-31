@@ -11,6 +11,8 @@ import { PartViewer } from './parts/viewer.js';
 import { Input } from './ui/input.js';
 import { Sound } from './ui/audio.js';
 import { Hud } from './ui/hud.js';
+import { TouchControls } from './ui/touch.js';
+import { Mirrors } from './ui/mirrors.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -33,6 +35,24 @@ const input = new Input();
 const sound = new Sound();
 
 const viewer = new PartViewer($('#partbox'));
+// 터치 조작. 키 입력을 그대로 흉내 내므로 조작 결과는 키보드와 완전히 같다.
+const touch = new TouchControls($('#touch'), input,
+  { onKey: (k) => { sound.ensure(); input.trigger(k); } });
+// 룸미러 · 사이드미러. 작은 캔버스에 장면을 한 번 더 그린다.
+const mirrors = new Mirrors(world, car, { fog: renderer.fog, every: 2 });
+{
+  const mc = touch.mirrorCanvases();
+  mirrors.attach('room', mc.room, 260, 54);
+  mirrors.attach('left', mc.left, 110, 84);
+  mirrors.attach('right', mc.right, 110, 84);
+}
+const applyTouch = () => {
+  const on = TouchControls.shouldEnable();
+  touch.setEnabled(on);
+  mirrors.setEnabled(on);
+};
+applyTouch();
+window.addEventListener('resize', applyTouch);
 const hud = new Hud({
   dash: $('#dash'),
   minimap: $('#minimap'),
@@ -179,15 +199,15 @@ input.on('escape', () => viewer.unpin());
 input.on('r', () => restart());
 input.on('p', () => { paused = !paused; $('#paused').classList.toggle('hidden', !paused); });
 
-// 화면 버튼 → 키 입력
-document.querySelectorAll('[data-key]').forEach((btn) => {
+// 사이드 패널 버튼 → 키 입력 (#touch 안의 버튼은 TouchControls 가 직접 처리한다)
+document.querySelectorAll('#side [data-key]').forEach((btn) => {
   btn.addEventListener('click', () => {
     input.trigger(btn.dataset.key);
     sound.ensure();
   });
 });
 // 주행 버튼(누르고 있는 동안 유지)
-document.querySelectorAll('[data-hold]').forEach((btn) => {
+document.querySelectorAll('#side [data-hold]').forEach((btn) => {
   const key = btn.dataset.hold;
   const down = (e) => { e.preventDefault(); input.keys.add(key); sound.ensure(); };
   const up = () => input.keys.delete(key);
@@ -256,7 +276,11 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   requestAnimationFrame(frame);
-  if (paused) return;
+  if (paused) {
+    // 일시정지 중에도 버튼 입력은 처리해야 다시 풀 수 있다.
+    input.flush();
+    return;
+  }
 
   input.update(dt);
 
@@ -351,6 +375,8 @@ function frame(now) {
   hud.drawMinimap(vehicle, exam);
   hud.drawOverlay(vehicle, ui, cameraMode === 'interior', dt);
   viewer.render();
+  touch.update(vehicle, ui, exam);
+  mirrors.update(vehicle, cameraMode === 'interior');
   updatePanels();
 
   // ---- 소리 ----
@@ -505,4 +531,4 @@ restart();
 requestAnimationFrame(frame);
 
 // 디버깅 · 자동 주행 검증용 훅.
-window.__sim = { vehicle, exam, ui, input, hud, viewer, car, course, toast };
+window.__sim = { vehicle, exam, ui, input, hud, viewer, car, course, toast, touch };

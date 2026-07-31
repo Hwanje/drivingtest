@@ -1,0 +1,14 @@
+{
+  "name": "운전면허 장내기능시험 연습",
+  "short_name": "기능시험 연습",
+  "description": "제1종 보통(자동변속기) 장내기능시험 연습 · 부산북부 코스",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b1017",
+  "theme_color": "#0b1017",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

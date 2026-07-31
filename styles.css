@@ -355,3 +355,231 @@ button.primary {
   #minimapwrap { width: 170px; }
   #minimap { height: 128px; }
 }
+
+/* =========================================================================
+   터치 조작 (모바일)
+   실제 운전석을 화면에 펼쳐 놓은 배치. 데스크톱에서는 통째로 숨긴다.
+   ========================================================================= */
+#touch { display: none; }
+#touch.on {
+  display: block; position: absolute; inset: 0;
+  pointer-events: none;                 /* 빈 곳은 3D 화면이 받는다 */
+  z-index: 40;
+  --pad: max(10px, env(safe-area-inset-bottom));
+  --l: max(10px, env(safe-area-inset-left));
+  --r: max(10px, env(safe-area-inset-right));
+  font-family: system-ui, sans-serif;
+}
+#touch.on > * { pointer-events: auto; }
+#touch button { touch-action: none; -webkit-tap-highlight-color: transparent; }
+
+/* 터치 모드에서는 데스크톱 HUD 를 비운다 (터치 UI 가 대신한다) */
+body.touch-mode #dashwrap,
+body.touch-mode #instruction-box,
+body.touch-mode #topbar .chip:nth-child(3) { display: none; }
+
+/* ---- 변속 레버 (좌상단) ---- */
+.tc-shift {
+  position: absolute; left: var(--l); top: 34px;
+  display: flex; gap: 6px; align-items: stretch;
+  background: linear-gradient(180deg, #2b3038, #171a20);
+  border: 1px solid rgba(255,255,255,.14); border-radius: 14px; padding: 8px 10px;
+}
+.tc-shift-slot {
+  position: relative; width: 26px; border-radius: 13px;
+  background: #0a0c10; box-shadow: inset 0 2px 6px #000;
+}
+.tc-shift-knob {
+  position: absolute; left: 2px; right: 2px; top: 2px; height: 25%;
+  border-radius: 11px; transition: transform .18s ease;
+  background: linear-gradient(180deg, #dfe4ec, #8b93a2);
+  box-shadow: 0 1px 3px #000;
+}
+.tc-shift-labels { display: flex; flex-direction: column; }
+.tc-shift-labels button {
+  flex: 1; min-width: 30px; min-height: 26px; border: 0; background: none;
+  color: #7d8593; font: 700 15px/1 system-ui, sans-serif;
+}
+.tc-shift-labels button.lit { color: #6ce8a0; text-shadow: 0 0 8px rgba(108,232,160,.7); }
+
+/* ---- 미러 ---- */
+.tc-mirror {
+  position: absolute; overflow: hidden;
+  border: 2px solid rgba(16,19,24,.9); border-radius: 6px;
+  background: #93b4d2; box-shadow: 0 2px 8px rgba(0,0,0,.5);
+}
+/* 거울이므로 좌우가 뒤집혀 보인다 */
+.tc-mirror canvas { display: block; width: 100%; height: 100%; transform: scaleX(-1); }
+.tc-mirror.room {
+  left: 50%; transform: translateX(-50%); top: 4px;
+  width: min(30vw, 260px); height: min(9vh, 54px); border-radius: 10px;
+}
+/* 변속 레버 아래, 스티어링 휠 위 */
+.tc-mirror.side { width: min(15vw, 110px); height: min(18vh, 78px); top: 158px; }
+.tc-mirror.side.left  { left: var(--l); }
+.tc-mirror.side.right { right: calc(var(--r) + min(15vh, 76px) * 2 + 22px); top: 158px; }
+
+/* ---- 둥근 버튼 ---- */
+.tc-round {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 54px; height: 54px; border-radius: 50%; gap: 1px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: radial-gradient(circle at 34% 28%, #454b57, #191d24 72%);
+  color: #cfd6e2; font: 700 16px/1 system-ui, sans-serif;
+  box-shadow: 0 2px 6px rgba(0,0,0,.55);
+}
+.tc-round.sm { width: 40px; height: 40px; font-size: 15px; }
+.tc-round i { font-style: normal; font-size: 8px; font-weight: 600; opacity: .75; }
+.tc-round.press { filter: brightness(1.7); transform: translateY(1px); }
+.tc-round.lit { color: #6ce8a0; border-color: rgba(108,232,160,.65); box-shadow: 0 0 12px rgba(108,232,160,.35); }
+.tc-round.hz { color: #ff8f7e; }
+.tc-round.hz.lit { color: #ff5f48; border-color: rgba(255,95,72,.7); box-shadow: 0 0 12px rgba(255,95,72,.45); }
+.tc-round.start { font-size: 9px; letter-spacing: .3px; }
+.tc-round.start.lit { color: #6ce8a0; }
+
+.tc-topright { position: absolute; right: var(--r); top: 8px; display: flex; gap: 6px; }
+.tc-signals {
+  position: absolute; right: calc(var(--r) + 92px); top: 4px;
+  display: flex; gap: 8px;
+}
+.tc-dashrow {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: var(--pad);
+  display: flex; gap: 8px;
+}
+
+/* ---- 속도 ---- */
+.tc-speed {
+  position: absolute; left: 50%; transform: translateX(-50%); top: 40%;
+  display: flex; align-items: baseline; gap: 4px;
+  color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,.8); pointer-events: none;
+}
+.tc-speed b { font: 800 26px/1 system-ui, sans-serif; }
+.tc-speed span { font: 600 12px/1 system-ui, sans-serif; opacity: .85; }
+
+/* ---- 스티어링 휠 ---- */
+.tc-wheel {
+  position: absolute; left: var(--l); bottom: var(--pad);
+  width: min(38vh, 180px); height: min(38vh, 180px);
+  touch-action: none; user-select: none;
+}
+.tc-wheel svg { width: 100%; height: 100%; display: block; will-change: transform; }
+.tc-wheel .rim-out { fill: none; stroke: rgba(10,12,16,.85); stroke-width: 20; }
+.tc-wheel .rim { fill: none; stroke: #2c313b; stroke-width: 15; }
+.tc-wheel .spokes path { fill: #3b414d; }
+.tc-wheel .hub { fill: #2a2f38; }
+.tc-wheel .hub2 { fill: #4b5361; }
+.tc-wheel .mark { fill: #ff6b5e; }
+.tc-angle {
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+  text-align: center; font: 700 12px/1 system-ui, sans-serif; color: #eef2f8;
+  text-shadow: 0 1px 3px #000; pointer-events: none;
+}
+
+/* ---- 페달 ---- */
+.tc-pedals {
+  position: absolute; right: var(--r); bottom: var(--pad);
+  display: flex; gap: 10px; align-items: flex-end;
+}
+.tc-pedal {
+  width: min(15vh, 76px); height: min(32vh, 158px);
+  border-radius: 12px; border: 1px solid rgba(255,255,255,.2);
+  color: #10141a; font: 800 13px/1.2 system-ui, sans-serif;
+  background:
+    repeating-linear-gradient(115deg, rgba(0,0,0,.28) 0 8px, rgba(0,0,0,0) 8px 20px),
+    linear-gradient(180deg, #d8dde6, #98a0ad);
+  box-shadow: 0 3px 8px rgba(0,0,0,.5);
+}
+.tc-pedal span { writing-mode: vertical-rl; text-orientation: upright; letter-spacing: 2px; }
+.tc-pedal.brake { background:
+    repeating-linear-gradient(115deg, rgba(0,0,0,.28) 0 8px, rgba(0,0,0,0) 8px 20px),
+    linear-gradient(180deg, #e8c9c4, #ad8c86); }
+.tc-pedal.press { transform: translateY(4px); filter: brightness(.82); }
+
+/* ---- 시험관 안내 (하단 초록 글씨) ---- */
+.tc-say {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--pad) + 62px); width: min(56vw, 620px);
+  text-align: center; pointer-events: none;
+  color: #4dff92; font: 700 14px/1.35 system-ui, sans-serif;
+  text-shadow: 0 2px 5px rgba(0,0,0,.95), 0 0 12px rgba(0,0,0,.8);
+}
+.tc-say i {
+  display: block; font-style: normal; margin-top: 2px;
+  color: #cfe9d8; font-size: 11px; font-weight: 600; opacity: .92;
+}
+
+/* ---- 더보기 시트 ---- */
+.tc-sheet { position: fixed; inset: 0; background: rgba(4,6,10,.6); display: none; z-index: 60; }
+.tc-sheet.open { display: block; }
+.tc-sheet-inner {
+  position: absolute; right: 0; top: 0; bottom: 0; width: min(400px, 92vw);
+  background: #10151d; border-left: 1px solid rgba(255,255,255,.1);
+  padding: 14px calc(14px + env(safe-area-inset-right)) 14px 14px;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+.tc-sheet-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin: 4px 0 10px; color: #dbe2ec; font-size: 15px;
+}
+.tc-sheet-head button {
+  min-height: 36px; padding: 0 14px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); color: #e8ecf2;
+}
+.tc-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.tc-grid button {
+  min-height: 50px; border-radius: 12px; border: 1px solid rgba(255,255,255,.16);
+  background: rgba(20,25,33,.86); color: #e8ecf2; font: 600 14px/1 system-ui, sans-serif;
+}
+.tc-grid button.warn { border-color: rgba(255,140,120,.5); color: #ffb3a6; }
+.tc-info { font-size: 13px; color: #b9c2d0; margin-bottom: 14px; }
+.tc-info .row { padding: 5px 2px; border-bottom: 1px solid rgba(255,255,255,.05); }
+.tc-info .row.done { color: #6ce8a0; }
+.tc-info .row.active { color: #6cd0ff; font-weight: 700; }
+.tc-info .row.d { color: #ffb3a6; }
+.tc-info hr { border: 0; border-top: 1px solid rgba(255,255,255,.1); margin: 10px 0; }
+
+#rotate-hint { display: none; }
+
+/* =========================================================================
+   좁은 화면 배치
+   ========================================================================= */
+@media (max-width: 900px), (pointer: coarse) and (max-width: 1200px) {
+  html, body { overscroll-behavior: none; }
+  #app { grid-template-columns: 1fr; }
+  #side { display: none; }
+
+  #topbar { top: 6px; left: max(10px, env(safe-area-inset-left)); transform: none; gap: 5px; }
+  #topbar .chip { padding: 2px 8px; font-size: 10px; background: rgba(10,14,20,.6); }
+  #topbar .chip .value { font-size: 13px; }
+
+  /* 코스도 — 우상단, 시점/메뉴 버튼 아래 */
+  #minimapwrap { right: max(10px, env(safe-area-inset-right)); top: 64px; width: min(21vh, 132px); padding: 4px; }
+  #minimapwrap canvas { height: min(14vh, 84px); }
+  #minimapwrap .cap { font-size: 9px; }
+
+  /* 부품 상자 — 좌측, 사이드미러 아래 */
+  /* 부품 상자 — 변속 레버와 룸미러 사이 빈 자리 */
+  #partbox {
+    left: calc(max(10px, env(safe-area-inset-left)) + 118px); right: auto;
+    top: 34px; bottom: auto;
+    width: min(23vw, 186px); padding: 6px 8px;
+  }
+  #partbox header h3 { font-size: 11px; }
+  #partbox header p, #partbox .reason { display: none; }
+  #partbox .part-canvas { height: 62px; }
+  #partbox .hint { display: none; }
+
+  #toasts { bottom: auto; top: 30px; }
+  #result .card, #help .card { max-height: 88vh; overflow-y: auto; }
+}
+
+/* 세로로 들면 가로로 돌리라고 안내한다. 조작이 화면을 좌우로 다 쓰기 때문에
+   세로에서는 겹칠 수밖에 없다. */
+@media (pointer: coarse) and (orientation: portrait) {
+  #rotate-hint {
+    display: flex; position: fixed; inset: 0; z-index: 200;
+    background: #0b1017; color: #e8ecf2;
+    align-items: center; justify-content: center; text-align: center;
+    font: 600 18px/1.6 system-ui, sans-serif; padding: 24px;
+  }
+}
